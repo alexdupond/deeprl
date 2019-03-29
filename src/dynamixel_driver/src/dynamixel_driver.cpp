@@ -3,8 +3,6 @@
 #include "std_msgs/Float32MultiArray.h"
 #include "dynamixel_driver/SetDynamixelPositions.h"
 
-#include <sstream>
-
 void setDynamixelCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
   // Insert code to set the dynamixel motors
@@ -15,9 +13,9 @@ void setDynamixelCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
 
 bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req, dynamixel_driver::SetDynamixelPositions::Response &res)
 { 
-  // Use input data req.data[i] to get motor positions sendt 
+  // Use input data req.inputPos[i] to get motor positions sendt 
   
-  // Response with a requst of some type res.data[i]
+  // Response with a requst of some type res.outputPos[i]
 
   // Return true when ready to send data back
    return true;
@@ -34,7 +32,6 @@ int main(int argc, char **argv)
 
   ros::Rate loop_rate(10);
 
-  int count = 0;
   while (ros::ok())
   {
     // Maybe publish current motor position every 10 Hz 
