@@ -25,11 +25,13 @@
 #define ADDR_PRO_OPERATING_MODE         11
 #define ADDR_PRO_GOAL_VEL               104
 #define ADDR_PRO_PRESENT_VEL            128
+#define ADDR_PRO_PRESENT_CURRENT        126
 
 // Data Byte Length
 #define LEN_PRO_GOAL_VEL                 4
 #define LEN_PRO_PRESENT_VEL              4
 #define LEN_PRO_PRESENT_POSITION         4
+#define LEN_PRO_PRESENT_CURRENT          2
 
 // Protocol version
 #define PROTOCOL_VERSION                2.0
@@ -48,10 +50,10 @@
 #define DXL1_OFFSET                     309
 #define DXL2_OFFSET                     1855
 
-#define DXL1_MAX_POS                    1500 - DXL1_OFFSET  // 1570
-#define DXL1_MIN_POS                    -500 - DXL1_OFFSET  // -583
-#define DXL2_MAX_POS                    3700 - DXL2_OFFSET  // 3700
-#define DXL2_MIN_POS                    0    - DXL2_OFFSET  // 0
+#define DXL1_MAX_POS                    1150  // 1570
+#define DXL1_MIN_POS                    -750  // -583
+#define DXL2_MAX_POS                    1200  // 3700
+#define DXL2_MIN_POS                    -1200  // 0
 
 // Init Port Handler and Packet Handler
 dynamixel::PortHandler *portHandler = dynamixel::PortHandler::getPortHandler(DEVICENAME);
@@ -63,16 +65,20 @@ dynamixel::GroupSyncWrite groupSyncWrite(portHandler, packetHandler, ADDR_PRO_GO
 // Initialize Groupsyncread instance for Present Position
 dynamixel::GroupSyncRead groupSyncRead_Pos(portHandler, packetHandler, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
 dynamixel::GroupSyncRead groupSyncRead_Vel(portHandler, packetHandler, ADDR_PRO_PRESENT_VEL, LEN_PRO_PRESENT_VEL);
+dynamixel::GroupSyncRead groupSyncRead_Cur(portHandler, packetHandler, ADDR_PRO_PRESENT_CURRENT, LEN_PRO_PRESENT_CURRENT);
 
 int32_t syncRead(dynamixel::GroupSyncRead &gsr, uint8_t id, uint16_t addr, u_int16_t dataLen);
 void syncWrite(dynamixel::GroupSyncWrite &gsw, uint8_t id, uint32_t data);
 void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8_t data);
-void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel);
+void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel, dynamixel::GroupSyncRead & gsrCur);
 bool withinSafeZone(int32_t dxl1_pos, int32_t dxl2_pos);
 void emergencyStop();
 
+float fromPosToRad(int32_t dataPos);
 float fromTickToRad(int32_t dataInTick);
 int32_t fromRadToTick(float dataInRad);
+float fromCurToTorq(int16_t dataInCur);
+int16_t fromTorqToCur(float dataInTorq);
 
 void setDynamixelCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
@@ -104,18 +110,20 @@ int main(int argc, char **argv)
   ros::NodeHandle n;
   ros::ServiceServer service = n.advertiseService("dynamixel_set_positions_service", setDynamixelService);
   ros::Subscriber sub = n.subscribe("dynamixel_set_velocity", 1000, setDynamixelCallback);
-  ros::Publisher pub_pos = n.advertise<std_msgs::Float32MultiArray>("dynamixel_current_position", 1000);
-  ros::Publisher pub_vel = n.advertise<std_msgs::Float32MultiArray>("dynamixel_current_velocity", 1000);
+  ros::Publisher pub_pos = n.advertise<std_msgs::Float32MultiArray>("dynamixel_present_position", 1000);
+  ros::Publisher pub_vel = n.advertise<std_msgs::Float32MultiArray>("dynamixel_present_velocity", 1000);
+  ros::Publisher pub_cur = n.advertise<std_msgs::Float32MultiArray>("dynamixel_present_torque", 1000);
 
-  ros::Rate loop_rate(10);
+  ros::Rate loop_rate(50);
 
   int dxl1_target_vel = 0, dxl2_target_vel = 0;
   int dxl_comm_result = COMM_TX_FAIL;
   int32_t dxl1_present_position = 0, dxl2_present_position = 0, dxl1_present_vel = 0, dxl2_present_vel = 0;
+  int16_t dxl1_present_current = 0, dxl2_present_current = 0;
 
   try
   {
-     initRobot(packetHandler, portHandler, groupSyncRead_Pos, groupSyncRead_Vel);
+     initRobot(packetHandler, portHandler, groupSyncRead_Pos, groupSyncRead_Vel, groupSyncRead_Cur);
   }
   catch (const char* error_msg)
   {
@@ -123,7 +131,7 @@ int main(int argc, char **argv)
      return 0;
   }
 
-  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
+  //setTorque(packetHandler, portHandler, TORQUE_ENABLE);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -140,6 +148,11 @@ int main(int argc, char **argv)
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
            dxl1_present_vel = syncRead(groupSyncRead_Vel, DXL1_ID, ADDR_PRO_PRESENT_VEL, LEN_PRO_PRESENT_VEL);
            dxl2_present_vel = syncRead(groupSyncRead_Vel, DXL2_ID, ADDR_PRO_PRESENT_VEL, LEN_PRO_PRESENT_VEL);
+           // Syncread present current
+           dxl_comm_result = groupSyncRead_Cur.txRxPacket();
+           if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
+           dxl1_present_current = (int16_t)syncRead(groupSyncRead_Cur, DXL1_ID, ADDR_PRO_PRESENT_CURRENT, LEN_PRO_PRESENT_CURRENT);
+           dxl2_present_current = (int16_t)syncRead(groupSyncRead_Cur, DXL2_ID, ADDR_PRO_PRESENT_CURRENT, LEN_PRO_PRESENT_CURRENT);
        }
        catch (const char* error_msg)
        {
@@ -160,22 +173,23 @@ int main(int argc, char **argv)
     }
   }
 
-  // Convert data to Rad per second
-  dxl1_present_vel = fromTickToRad(dxl1_present_vel);
-  dxl2_present_vel = fromTickToRad(dxl2_present_vel);
-
   // Maybe publish current motor position every 10 Hz
   // Create msg
   std_msgs::Float32MultiArray msg_pos;
   std_msgs::Float32MultiArray msg_vel;
+  std_msgs::Float32MultiArray msg_torq;
   // push in the data
-  msg_pos.data.push_back(dxl1_present_position);
-  msg_pos.data.push_back(dxl2_present_position);
-  msg_vel.data.push_back(dxl1_present_vel);
-  msg_vel.data.push_back(dxl2_present_vel);
+  msg_pos.data.push_back(fromPosToRad(dxl1_present_position));
+  msg_pos.data.push_back(fromPosToRad(dxl2_present_position));
+  msg_vel.data.push_back(fromTickToRad(dxl1_present_vel));
+  msg_vel.data.push_back(fromTickToRad(dxl2_present_vel));
+  msg_torq.data.push_back(fromCurToTorq(dxl1_present_current));
+  msg_torq.data.push_back(fromCurToTorq(dxl2_present_current));
+
   // publish to topic
   pub_pos.publish(msg_pos);
   pub_vel.publish(msg_vel);
+  pub_cur.publish(msg_torq);
 
   ros::spinOnce();
   loop_rate.sleep();
@@ -184,6 +198,21 @@ int main(int argc, char **argv)
   setTorque(packetHandler, portHandler, TORQUE_DISABLE);
   portHandler->closePort();
   return 0;
+}
+
+float fromPosToRad(int32_t dataPos)
+{
+  return (dataPos / 4096.) * 2. * 3.1415;
+}
+
+float fromCurToTorq(int16_t dataInCur)
+{
+  return (dataInCur * 0.00269 * 1.667);
+}
+
+int16_t fromTorqToCur(float dataInTorq)
+{
+  return (dataInTorq / (0.00269 * 1.667));
 }
 
 float fromTickToRad(int32_t dataInTick)
@@ -243,7 +272,7 @@ void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8
     paH->write1ByteTxOnly(poH, DXL2_ID, ADDR_PRO_TORQUE_ENABLE, data);
 }
 
-void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel)
+void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel, dynamixel::GroupSyncRead & gsrCur)
 {
     // Open port
     if (poH->openPort())
@@ -269,15 +298,23 @@ void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynam
     if (!dxl_addparam_result)
         throw "addparam failed";
 
-
     // Add parameter storage for Dynamixel#1 present velocity value
     dxl_addparam_result = gsrVel.addParam(DXL1_ID);
     if (!dxl_addparam_result)
         throw "addparam failed";
 
-
     // Add parameter storage for Dynamixel#2 present velocity value
     dxl_addparam_result = gsrVel.addParam(DXL2_ID);
+    if (!dxl_addparam_result)
+        throw "addparam failed";
+
+    // Add parameter storage for Dynamixel#1 present current value
+    dxl_addparam_result = gsrCur.addParam(DXL1_ID);
+    if (!dxl_addparam_result)
+        throw "addparam failed";
+
+    // Add parameter storage for Dynamixel#2 present current value
+    dxl_addparam_result = gsrCur.addParam(DXL2_ID);
     if (!dxl_addparam_result)
         throw "addparam failed";
 
