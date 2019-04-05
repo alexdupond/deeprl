@@ -13,6 +13,9 @@
 #include <bitset>
 #include <string>
 
+#include <chrono>
+#include <thread>
+
 #include "/home/quist/bin/DynamixelSDK/c++/include/dynamixel_sdk/dynamixel_sdk.h"                                 // Uses Dynamixel SDK library
 // https://github.com/ROBOTIS-GIT/DynamixelSDK/tree/master/c%2B%2B/src/dynamixel_sdk
 
@@ -42,6 +45,14 @@
 #define DXL_MOVING_STATUS_THRESHOLD     25                  // Dynamixel moving status threshold
 #define VEL_CONTROL_MODE                1
 
+#define DXL1_OFFSET                     309
+#define DXL2_OFFSET                     1855
+
+#define DXL1_MAX_POS                    1500 - DXL1_OFFSET  // 1570
+#define DXL1_MIN_POS                    -500 - DXL1_OFFSET  // -583
+#define DXL2_MAX_POS                    3700 - DXL2_OFFSET  // 3700
+#define DXL2_MIN_POS                    0    - DXL2_OFFSET  // 0
+
 // Init Port Handler and Packet Handler
 dynamixel::PortHandler *portHandler = dynamixel::PortHandler::getPortHandler(DEVICENAME);
 dynamixel::PacketHandler *packetHandler = dynamixel::PacketHandler::getPacketHandler(PROTOCOL_VERSION);
@@ -57,11 +68,16 @@ int32_t syncRead(dynamixel::GroupSyncRead &gsr, uint8_t id, uint16_t addr, u_int
 void syncWrite(dynamixel::GroupSyncWrite &gsw, uint8_t id, uint32_t data);
 void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8_t data);
 void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel);
+bool withinSafeZone(int32_t dxl1_pos, int32_t dxl2_pos);
+void emergencyStop();
+
+float fromTickToRad(int32_t dataInTick);
+int32_t fromRadToTick(float dataInRad);
 
 void setDynamixelCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
-  syncWrite(groupSyncWrite, DXL1_ID, msg->data[0]);
-  syncWrite(groupSyncWrite, DXL2_ID, msg->data[1]);
+  syncWrite(groupSyncWrite, DXL1_ID, fromRadToTick(msg->data[0]));
+  syncWrite(groupSyncWrite, DXL2_ID, fromRadToTick(msg->data[1]));
 
   // Syncwrite goal position
   int dxl_comm_result = groupSyncWrite.txPacket();
@@ -109,24 +125,44 @@ int main(int argc, char **argv)
 
   setTorque(packetHandler, portHandler, TORQUE_ENABLE);
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
   while (ros::ok())
   {
-  try
+       try
        {    // Syncread present position
            dxl_comm_result = groupSyncRead_Pos.txRxPacket();
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
-           dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
-           dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+           dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) - DXL1_OFFSET;
+           dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) - DXL2_OFFSET;
            // Syncread present velocity
            dxl_comm_result = groupSyncRead_Vel.txRxPacket();
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
            dxl1_present_vel = syncRead(groupSyncRead_Vel, DXL1_ID, ADDR_PRO_PRESENT_VEL, LEN_PRO_PRESENT_VEL);
            dxl2_present_vel = syncRead(groupSyncRead_Vel, DXL2_ID, ADDR_PRO_PRESENT_VEL, LEN_PRO_PRESENT_VEL);
        }
-       catch (const char* error_msg){
+       catch (const char* error_msg)
+       {
            std::cerr << error_msg << std::endl;
            break;
+       }
+
+  if (!withinSafeZone(dxl1_present_position, dxl2_present_position))
+  {
+    try
+    {
+      emergencyStop();
+    }
+    catch (const char* error_msg)
+    {
+      std::cerr << error_msg << std::endl;
+      break;
+    }
   }
+
+  // Convert data to Rad per second
+  dxl1_present_vel = fromTickToRad(dxl1_present_vel);
+  dxl2_present_vel = fromTickToRad(dxl2_present_vel);
 
   // Maybe publish current motor position every 10 Hz
   // Create msg
@@ -148,6 +184,29 @@ int main(int argc, char **argv)
   setTorque(packetHandler, portHandler, TORQUE_DISABLE);
   portHandler->closePort();
   return 0;
+}
+
+float fromTickToRad(int32_t dataInTick)
+{
+  return (dataInTick * 0.229 * 2. * 3.1415)/60.;
+}
+
+int32_t fromRadToTick(float dataInRad)
+{
+  return dataInRad * 60. / (0.229 * 2. * 3.1415);
+}
+
+bool withinSafeZone(int32_t dxl1_pos, int32_t dxl2_pos)
+{
+  if (dxl1_pos > DXL1_MAX_POS || dxl1_pos < DXL1_MIN_POS || dxl2_pos > DXL2_MAX_POS || dxl2_pos < DXL2_MIN_POS)
+    return false;
+  else
+    return true;
+}
+
+void emergencyStop()
+{
+  throw "EMERGENCY STOP -- PROGRAM TERMINATED!";
 }
 
 int32_t syncRead(dynamixel::GroupSyncRead &gsr, uint8_t id, uint16_t addr, u_int16_t dataLen)
@@ -232,4 +291,6 @@ void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynam
     paH->write1ByteTxRx(poH, DXL2_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
     if (dxl_error != COMM_SUCCESS)
         throw paH->getRxPacketError(dxl_error);
+
+    std::cout << "Initialization Complete" << std::endl;
 }
