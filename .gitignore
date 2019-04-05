@@ -4,3 +4,5 @@ devel/
 logs/
 .vscode/
 .idea/
+**/*.pyc
+**/*~
