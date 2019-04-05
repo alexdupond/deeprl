@@ -21,18 +21,19 @@ def _forward(j):
     y = z = 0
     # motor height
     m_z = 0.0465
-    mjoint_to_tip_l = m_z * 3 / 4
+    mjoint_to_tip_l = 0.035
     # red angle body
-    a_phi = -.3927
-    a_l = .0644
+    a_phi = -0.2363
+    a_l = .07
     # j0 position
-    z += mjoint_to_tip_l
+    z += mjoint_to_tip_l + 0.008  # 8 mm off the ground
     # j1 position
     y += -sin(j0 + a_phi) * a_l
     z += cos(j0 + a_phi) * a_l
     # tip position
-    y += -sin(j0 - pi/4 + j1) * mjoint_to_tip_l
-    z += cos(j0 - pi/4 + j1) * mjoint_to_tip_l
+    j1_offset = (pi / 2 + a_phi) * 2 - pi
+    y += -sin(j0 + j1_offset + j1) * mjoint_to_tip_l
+    z += cos(j0 + j1_offset + j1) * mjoint_to_tip_l
     return y, z
 
 

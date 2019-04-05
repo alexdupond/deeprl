@@ -18,14 +18,14 @@
 			<geom type="plane" size="1 1 0.01" rgba=".8 .8 .8 1"/>
 		</body>
 		<!-- Arm -->
-		<geom name="motor0_geom" class="dyn_motor" pos="0 0 .0233"/>
-		<body name="angle_body" pos="0 0 0.0349">
-			<geom name="angle_geom" pos="0 0 0.0349" mass="0.01" rgba="1 0 0 .3" size=".01" type="sphere"/>
+		<geom name="motor0_geom" class="dyn_motor" pos="0 0 .0313"/>
+		<body name="angle_body" pos="0 0 0.0430">
+			<geom name="angle_geom" pos="0 0 0.036" mass="0.01" rgba="1 0 0 .3" size=".01" type="sphere"/>
 			<joint axis="1 0 0" range="-1 1.8" name="joint0" type="hinge"/>
-			<body name="motor2_body" pos="0 0.0247 0.0595" euler="-0.785 0 0">
+			<body name="motor2_body" pos="0 0.0164 0.0681" euler="-0.4725 0 0">
 				<joint axis="1 0 0" name="joint1" range="-2.0 2.0" type="hinge"/>
 				<geom name="motor1_geom" class="dyn_motor" pos="0 0 0.0116"/>
-				<body name="tip" pos="0 0 .0349">
+				<body name="tip" pos="0 0 .035">
 					<geom type="sphere" size=".005" rgba="1 1 1 1" mass="0"/>
 				</body>
 			</body>

@@ -13,7 +13,7 @@ cd into this folder and type ```pip3 install -e .```
 If you want to train a model using openai's baseline algorithms:
 * Make sure tensorflow is installed ```pip3 install tensorflow``` or ```pip3 install tensorflow-gpu```
 * Clone the [baseline repo](https://github.com/openai/baselines)
-* In baselines/baselines/run.py, add ```import gym_dyn_reacher``` after ```import gym```.
+* gym_dyn_reacher needs to be registered inside run.py for it to find our invironment. In baselines/baselines/run.py, add ```import gym_dyn_reacher``` after ```import gym```.
 * Install baselines as a python3 package:
 cd into baselines root folder and type ```pip3 install -e .```
 
