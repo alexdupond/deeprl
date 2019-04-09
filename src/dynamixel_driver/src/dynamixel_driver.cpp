@@ -158,7 +158,6 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
         if (!withinSafeZone(dxl1_present_position - DXL1_OFFSET, dxl2_present_position - DXL2_OFFSET))
         {
           emergencyStop();
-          setTorque(packetHandler, portHandler, TORQUE_DISABLE);
         }
     }
     catch (const char* error_msg)
@@ -247,7 +246,6 @@ int main(int argc, char **argv)
     catch (const char* error_msg)
     {
       std::cerr << error_msg << std::endl;
-      break;
     }
   }
 
@@ -320,7 +318,8 @@ bool withinSafeZone(int32_t dxl1_pos, int32_t dxl2_pos)
 
 void emergencyStop()
 {
-  throw "EMERGENCY STOP -- PROGRAM TERMINATED!";
+  setTorque(packetHandler, portHandler, TORQUE_DISABLE);
+  throw "EMERGENCY STOP -- TORQUE DISABLED!";
 }
 
 int32_t syncRead(dynamixel::GroupSyncRead &gsr, uint8_t id, uint16_t addr, u_int16_t dataLen)
