@@ -1,8 +1,9 @@
 .catkin_tools/
-build/
-devel/
-logs/
-.vscode/
-.idea/
+**/build/
+**/devel/
+**/logs/
+**/.vscode/
+**/.idea/
 **/*.pyc
 **/*~
+**/*.egg-info/
