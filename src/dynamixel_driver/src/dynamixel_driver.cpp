@@ -21,17 +21,21 @@
 
 // Control table address   Control table -> http://support.robotis.com/en/product/actuator/dynamixel_x/xm_series/xm430-w350.html
 #define ADDR_PRO_TORQUE_ENABLE          64
+#define ADDR_PRO_GOAL_POS               116
 #define ADDR_PRO_PRESENT_POSITION       132
 #define ADDR_PRO_OPERATING_MODE         11
 #define ADDR_PRO_GOAL_VEL               104
 #define ADDR_PRO_PRESENT_VEL            128
 #define ADDR_PRO_PRESENT_CURRENT        126
+#define ADDR_PRO_HOMING_OFFSET          20
 
 // Data Byte Length
 #define LEN_PRO_GOAL_VEL                 4
 #define LEN_PRO_PRESENT_VEL              4
+#define LEN_PRO_GOAL_POS                 4
 #define LEN_PRO_PRESENT_POSITION         4
 #define LEN_PRO_PRESENT_CURRENT          2
+#define LEN_PRO_HOMING_OFFSET            4
 
 // Protocol version
 #define PROTOCOL_VERSION                2.0
@@ -45,10 +49,14 @@
 #define TORQUE_ENABLE                   1                   // Value for enabling the torque
 #define TORQUE_DISABLE                  0                   // Value for disabling the torque
 #define DXL_MOVING_STATUS_THRESHOLD     25                  // Dynamixel moving status threshold
+#define POS_CONTROL_MODE                3
 #define VEL_CONTROL_MODE                1
+#define CUR_CONTROL_MODE                0
 
-#define DXL1_OFFSET                     309
+#define DXL1_OFFSET                     1375 // 309
 #define DXL2_OFFSET                     1855
+
+#define DXL1_HOMING_OFFSET              1024
 
 #define DXL1_MAX_POS                    1150  // 1570
 #define DXL1_MIN_POS                    -750  // -583
@@ -61,6 +69,7 @@ dynamixel::PacketHandler *packetHandler = dynamixel::PacketHandler::getPacketHan
 
 // Initialize GroupSyncWrite instance
 dynamixel::GroupSyncWrite groupSyncWrite(portHandler, packetHandler, ADDR_PRO_GOAL_VEL, LEN_PRO_GOAL_VEL);
+dynamixel::GroupSyncWrite groupSyncWrite_Pos(portHandler, packetHandler, ADDR_PRO_GOAL_POS, LEN_PRO_GOAL_POS);
 
 // Initialize Groupsyncread instance for Present Position
 dynamixel::GroupSyncRead groupSyncRead_Pos(portHandler, packetHandler, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
@@ -68,13 +77,14 @@ dynamixel::GroupSyncRead groupSyncRead_Vel(portHandler, packetHandler, ADDR_PRO_
 dynamixel::GroupSyncRead groupSyncRead_Cur(portHandler, packetHandler, ADDR_PRO_PRESENT_CURRENT, LEN_PRO_PRESENT_CURRENT);
 
 int32_t syncRead(dynamixel::GroupSyncRead &gsr, uint8_t id, uint16_t addr, u_int16_t dataLen);
-void syncWrite(dynamixel::GroupSyncWrite &gsw, uint8_t id, uint32_t data);
+void syncWrite(dynamixel::GroupSyncWrite &gsw, uint8_t id, int32_t data);
 void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8_t data);
 void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel, dynamixel::GroupSyncRead & gsrCur);
 bool withinSafeZone(int32_t dxl1_pos, int32_t dxl2_pos);
 void emergencyStop();
 
 float fromPosToRad(int32_t dataPos);
+int32_t fromRadToPos(float dataInRad);
 float fromTickToRad(int32_t dataInTick);
 int32_t fromRadToTick(float dataInRad);
 float fromCurToTorq(int16_t dataInCur);
@@ -95,9 +105,95 @@ void setDynamixelCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
 
 bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req, dynamixel_driver::SetDynamixelPositions::Response &res)
 {
+
+  uint8_t dxl_error;
+  try
+  {
+    setTorque(packetHandler, portHandler, TORQUE_DISABLE);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Enable Position Controlmode #1
+    packetHandler->write1ByteTxRx(portHandler, DXL1_ID, ADDR_PRO_OPERATING_MODE, POS_CONTROL_MODE, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw packetHandler->getRxPacketError(dxl_error);
+
+    // Enable Position Controlmode #2
+    packetHandler->write1ByteTxRx(portHandler, DXL2_ID, ADDR_PRO_OPERATING_MODE, POS_CONTROL_MODE, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw packetHandler->getRxPacketError(dxl_error);
+  }
+  catch (const char* error_msg)
+  {
+    std::cerr << error_msg << std::endl;
+    return 0;
+  }
+
   // Use input data req.inputPos[i] to get motor positions sendt
+  int32_t dxl1_target_pos = fromRadToPos(req.inputPos[0]) + DXL1_OFFSET;
+  int32_t dxl2_target_pos = fromRadToPos(req.inputPos[1]) + DXL2_OFFSET;
+
+  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  syncWrite(groupSyncWrite_Pos, DXL1_ID, dxl1_target_pos);
+  syncWrite(groupSyncWrite_Pos, DXL2_ID, dxl2_target_pos);
+  // Syncwrite goal position
+  int dxl_comm_result = groupSyncWrite_Pos.txPacket();
+  if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
+  groupSyncWrite_Pos.clearParam();
+
+  int32_t dxl1_present_position = 0, dxl2_present_position = 0;
+
+  do
+  {
+    try
+    {    // Syncread present position
+        dxl_comm_result = groupSyncRead_Pos.txRxPacket();
+        if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
+        dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
+        dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
+
+        if (!withinSafeZone(dxl1_present_position - DXL1_OFFSET, dxl2_present_position - DXL2_OFFSET))
+        {
+          emergencyStop();
+          setTorque(packetHandler, portHandler, TORQUE_DISABLE);
+        }
+    }
+    catch (const char* error_msg)
+    {
+        std::cerr << error_msg << std::endl;
+        break;
+    }
+
+  } while((abs(dxl1_target_pos - dxl1_present_position) > DXL_MOVING_STATUS_THRESHOLD) || (abs(dxl2_target_pos - dxl2_present_position) > DXL_MOVING_STATUS_THRESHOLD));
 
   // Response with a requst of some type res.outputPos[i]
+
+  res.outputPos.push_back(fromPosToRad(dxl1_present_position - DXL1_OFFSET));
+  res.outputPos.push_back(fromPosToRad(dxl2_present_position - DXL2_OFFSET));
+
+
+  try
+  {
+    setTorque(packetHandler, portHandler, TORQUE_DISABLE);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Enable Position Controlmode #1
+    packetHandler->write1ByteTxRx(portHandler, DXL1_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw packetHandler->getRxPacketError(dxl_error);
+
+    // Enable Position Controlmode #2
+    packetHandler->write1ByteTxRx(portHandler, DXL2_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw packetHandler->getRxPacketError(dxl_error);
+  }
+  catch (const char* error_msg)
+  {
+    std::cerr << error_msg << std::endl;
+    return 0;
+  }
+
+  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Return true when ready to send data back
    return true;
@@ -131,7 +227,7 @@ int main(int argc, char **argv)
      return 0;
   }
 
-  //setTorque(packetHandler, portHandler, TORQUE_ENABLE);
+  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -141,8 +237,8 @@ int main(int argc, char **argv)
        {    // Syncread present position
            dxl_comm_result = groupSyncRead_Pos.txRxPacket();
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
-           dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) - DXL1_OFFSET;
-           dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) - DXL2_OFFSET;
+           dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096 - DXL1_OFFSET;
+           dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096 - DXL2_OFFSET;
            // Syncread present velocity
            dxl_comm_result = groupSyncRead_Vel.txRxPacket();
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
@@ -181,6 +277,8 @@ int main(int argc, char **argv)
   // push in the data
   msg_pos.data.push_back(fromPosToRad(dxl1_present_position));
   msg_pos.data.push_back(fromPosToRad(dxl2_present_position));
+  //msg_pos.data.push_back(dxl1_present_position);
+  //msg_pos.data.push_back(dxl2_present_position);
   msg_vel.data.push_back(fromTickToRad(dxl1_present_vel));
   msg_vel.data.push_back(fromTickToRad(dxl2_present_vel));
   msg_torq.data.push_back(fromCurToTorq(dxl1_present_current));
@@ -198,6 +296,11 @@ int main(int argc, char **argv)
   setTorque(packetHandler, portHandler, TORQUE_DISABLE);
   portHandler->closePort();
   return 0;
+}
+
+int32_t fromRadToPos(float dataInRad)
+{
+  return (dataInRad * 4096.)/(2. * 2.1415);
 }
 
 float fromPosToRad(int32_t dataPos)
@@ -248,7 +351,7 @@ int32_t syncRead(dynamixel::GroupSyncRead &gsr, uint8_t id, uint16_t addr, u_int
         return gsr.getData(id, addr, dataLen);
 }
 
-void syncWrite(dynamixel::GroupSyncWrite &gsw, uint8_t id, uint32_t data)
+void syncWrite(dynamixel::GroupSyncWrite &gsw, uint8_t id, int32_t data)
 {
     uint8_t dxl_param[4];
     // Allocate goal position value into byte array
@@ -326,6 +429,10 @@ void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynam
 
     // Enable Velocity Controlmode #2
     paH->write1ByteTxRx(poH, DXL2_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw paH->getRxPacketError(dxl_error);
+
+    paH->write4ByteTxRx(poH, DXL1_ID, ADDR_PRO_HOMING_OFFSET, DXL1_HOMING_OFFSET, &dxl_error);
     if (dxl_error != COMM_SUCCESS)
         throw paH->getRxPacketError(dxl_error);
 
