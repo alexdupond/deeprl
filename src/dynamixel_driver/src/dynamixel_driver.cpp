@@ -27,6 +27,7 @@
 #define ADDR_PRO_GOAL_VEL               104
 #define ADDR_PRO_PRESENT_VEL            128
 #define ADDR_PRO_PRESENT_CURRENT        126
+#define ADDR_PRO_GOAL_CUR               102
 #define ADDR_PRO_HOMING_OFFSET          20
 
 // Data Byte Length
@@ -35,6 +36,7 @@
 #define LEN_PRO_GOAL_POS                 4
 #define LEN_PRO_PRESENT_POSITION         4
 #define LEN_PRO_PRESENT_CURRENT          2
+#define LEN_PRO_GOAL_CUR                 2
 #define LEN_PRO_HOMING_OFFSET            4
 
 // Protocol version
@@ -63,13 +65,16 @@
 #define DXL2_MAX_POS                    1200  // 3700
 #define DXL2_MIN_POS                    -1200  // 0
 
+int controlMode = -1;
+
 // Init Port Handler and Packet Handler
 dynamixel::PortHandler *portHandler = dynamixel::PortHandler::getPortHandler(DEVICENAME);
 dynamixel::PacketHandler *packetHandler = dynamixel::PacketHandler::getPacketHandler(PROTOCOL_VERSION);
 
 // Initialize GroupSyncWrite instance
-dynamixel::GroupSyncWrite groupSyncWrite(portHandler, packetHandler, ADDR_PRO_GOAL_VEL, LEN_PRO_GOAL_VEL);
+dynamixel::GroupSyncWrite groupSyncWrite_Vel(portHandler, packetHandler, ADDR_PRO_GOAL_VEL, LEN_PRO_GOAL_VEL);
 dynamixel::GroupSyncWrite groupSyncWrite_Pos(portHandler, packetHandler, ADDR_PRO_GOAL_POS, LEN_PRO_GOAL_POS);
+dynamixel::GroupSyncWrite groupSyncWrite_Torq(portHandler, packetHandler, ADDR_PRO_GOAL_CUR, LEN_PRO_GOAL_CUR);
 
 // Initialize Groupsyncread instance for Present Position
 dynamixel::GroupSyncRead groupSyncRead_Pos(portHandler, packetHandler, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
@@ -82,6 +87,7 @@ void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8
 void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel, dynamixel::GroupSyncRead & gsrCur);
 bool withinSafeZone(int32_t dxl1_pos, int32_t dxl2_pos);
 void emergencyStop();
+void setControlMode(int control_mode);
 
 float fromPosToRad(int32_t dataPos);
 int32_t fromRadToPos(float dataInRad);
@@ -90,49 +96,46 @@ int32_t fromRadToTick(float dataInRad);
 float fromCurToTorq(int16_t dataInCur);
 int16_t fromTorqToCur(float dataInTorq);
 
-void setDynamixelCallback(const std_msgs::Float32MultiArray::ConstPtr& msg)
+void setDynamixelCallbackVelocity(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
-  syncWrite(groupSyncWrite, DXL1_ID, fromRadToTick(msg->data[0]));
-  syncWrite(groupSyncWrite, DXL2_ID, fromRadToTick(msg->data[1]));
+  if (controlMode != VEL_CONTROL_MODE)
+    setControlMode(VEL_CONTROL_MODE);
+
+  syncWrite(groupSyncWrite_Vel, DXL1_ID, fromRadToTick(msg->data[0]));
+  syncWrite(groupSyncWrite_Vel, DXL2_ID, fromRadToTick(msg->data[1]));
 
   // Syncwrite goal position
-  int dxl_comm_result = groupSyncWrite.txPacket();
+  int dxl_comm_result = groupSyncWrite_Vel.txPacket();
   if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
 
   // Clear syncwrite parameter storage
-  groupSyncWrite.clearParam();
+  groupSyncWrite_Vel.clearParam();
+}
+
+void setDynamixelCallbackTorque(const std_msgs::Float32MultiArray::ConstPtr& msg)
+{
+  if (controlMode != CUR_CONTROL_MODE)
+    setControlMode(CUR_CONTROL_MODE);
+
+  syncWrite(groupSyncWrite_Torq, DXL1_ID, fromTorqToCur(msg->data[0]));
+  syncWrite(groupSyncWrite_Torq, DXL2_ID, fromTorqToCur(msg->data[1]));
+
+  // Syncwrite goal position
+  int dxl_comm_result = groupSyncWrite_Torq.txPacket();
+  if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
+
+  // Clear syncwrite parameter storage
+  groupSyncWrite_Torq.clearParam();
 }
 
 bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req, dynamixel_driver::SetDynamixelPositions::Response &res)
 {
 
-  uint8_t dxl_error;
-  try
-  {
-    setTorque(packetHandler, portHandler, TORQUE_DISABLE);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    // Enable Position Controlmode #1
-    packetHandler->write1ByteTxRx(portHandler, DXL1_ID, ADDR_PRO_OPERATING_MODE, POS_CONTROL_MODE, &dxl_error);
-    if (dxl_error != COMM_SUCCESS)
-        throw packetHandler->getRxPacketError(dxl_error);
-
-    // Enable Position Controlmode #2
-    packetHandler->write1ByteTxRx(portHandler, DXL2_ID, ADDR_PRO_OPERATING_MODE, POS_CONTROL_MODE, &dxl_error);
-    if (dxl_error != COMM_SUCCESS)
-        throw packetHandler->getRxPacketError(dxl_error);
-  }
-  catch (const char* error_msg)
-  {
-    std::cerr << error_msg << std::endl;
-    return 0;
-  }
+  setControlMode(POS_CONTROL_MODE);
 
   // Use input data req.inputPos[i] to get motor positions sendt
   int32_t dxl1_target_pos = fromRadToPos(req.inputPos[0]) + DXL1_OFFSET;
   int32_t dxl2_target_pos = fromRadToPos(req.inputPos[1]) + DXL2_OFFSET;
-
-  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   syncWrite(groupSyncWrite_Pos, DXL1_ID, dxl1_target_pos);
   syncWrite(groupSyncWrite_Pos, DXL2_ID, dxl2_target_pos);
@@ -171,29 +174,7 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
   res.outputPos.push_back(fromPosToRad(dxl1_present_position - DXL1_OFFSET));
   res.outputPos.push_back(fromPosToRad(dxl2_present_position - DXL2_OFFSET));
 
-
-  try
-  {
-    setTorque(packetHandler, portHandler, TORQUE_DISABLE);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    // Enable Position Controlmode #1
-    packetHandler->write1ByteTxRx(portHandler, DXL1_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
-    if (dxl_error != COMM_SUCCESS)
-        throw packetHandler->getRxPacketError(dxl_error);
-
-    // Enable Position Controlmode #2
-    packetHandler->write1ByteTxRx(portHandler, DXL2_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
-    if (dxl_error != COMM_SUCCESS)
-        throw packetHandler->getRxPacketError(dxl_error);
-  }
-  catch (const char* error_msg)
-  {
-    std::cerr << error_msg << std::endl;
-    return 0;
-  }
-
-  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  setControlMode(controlMode);
 
   // Return true when ready to send data back
    return true;
@@ -205,7 +186,8 @@ int main(int argc, char **argv)
 
   ros::NodeHandle n;
   ros::ServiceServer service = n.advertiseService("dynamixel_set_positions_service", setDynamixelService);
-  ros::Subscriber sub = n.subscribe("dynamixel_set_velocity", 1000, setDynamixelCallback);
+  ros::Subscriber sub_vel = n.subscribe("dynamixel_set_velocity", 1000, setDynamixelCallbackVelocity);
+  ros::Subscriber sub_torq = n.subscribe("dynamixel_set_torque", 1000, setDynamixelCallbackTorque);
   ros::Publisher pub_pos = n.advertise<std_msgs::Float32MultiArray>("dynamixel_present_position", 1000);
   ros::Publisher pub_vel = n.advertise<std_msgs::Float32MultiArray>("dynamixel_present_velocity", 1000);
   ros::Publisher pub_cur = n.advertise<std_msgs::Float32MultiArray>("dynamixel_present_torque", 1000);
@@ -375,6 +357,33 @@ void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8
     paH->write1ByteTxOnly(poH, DXL2_ID, ADDR_PRO_TORQUE_ENABLE, data);
 }
 
+void setControlMode(int control_mode)
+{
+  uint8_t dxl_error;
+  try
+  {
+    setTorque(packetHandler, portHandler, TORQUE_DISABLE);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Enable Position Controlmode #1
+    packetHandler->write1ByteTxRx(portHandler, DXL1_ID, ADDR_PRO_OPERATING_MODE, control_mode, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw packetHandler->getRxPacketError(dxl_error);
+
+    // Enable Position Controlmode #2
+    packetHandler->write1ByteTxRx(portHandler, DXL2_ID, ADDR_PRO_OPERATING_MODE, control_mode, &dxl_error);
+    if (dxl_error != COMM_SUCCESS)
+        throw packetHandler->getRxPacketError(dxl_error);
+  }
+  catch (const char* error_msg)
+  {
+    std::cerr << error_msg << std::endl;
+  }
+  controlMode = control_mode;
+
+  setTorque(packetHandler, portHandler, TORQUE_ENABLE);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+
 void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel, dynamixel::GroupSyncRead & gsrCur)
 {
     // Open port
@@ -431,6 +440,8 @@ void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynam
     paH->write1ByteTxRx(poH, DXL2_ID, ADDR_PRO_OPERATING_MODE, VEL_CONTROL_MODE, &dxl_error);
     if (dxl_error != COMM_SUCCESS)
         throw paH->getRxPacketError(dxl_error);
+
+    controlMode = VEL_CONTROL_MODE;
 
     paH->write4ByteTxRx(poH, DXL1_ID, ADDR_PRO_HOMING_OFFSET, DXL1_HOMING_OFFSET, &dxl_error);
     if (dxl_error != COMM_SUCCESS)
