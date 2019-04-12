@@ -16,7 +16,7 @@
 #include <chrono>
 #include <thread>
 
-#include "/home/quist/bin/DynamixelSDK/c++/include/dynamixel_sdk/dynamixel_sdk.h"                                 // Uses Dynamixel SDK library
+#include <dynamixel_sdk/dynamixel_sdk.h>
 // https://github.com/ROBOTIS-GIT/DynamixelSDK/tree/master/c%2B%2B/src/dynamixel_sdk
 
 // Control table address   Control table -> http://support.robotis.com/en/product/actuator/dynamixel_x/xm_series/xm430-w350.html

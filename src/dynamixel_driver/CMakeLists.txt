@@ -9,10 +9,9 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
-find_library(DXL libdxl_x64_cpp.so)
-find_path(DXL_HEADER dynamixel_sdk)
-message(STATUS "${DXL}")
-message(STATUS "${DXL_HEADER}")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMake")
+find_package(DXL REQUIRED)
+
 
 ## Generate messages in the 'msg' folder
 # add_message_files(
@@ -21,7 +20,7 @@ message(STATUS "${DXL_HEADER}")
 #   Message2.msg
 # )
 
-## Generate services in the 'srv' folder 
+## Generate services in the 'srv' folder
 add_service_files(
   FILES
   SetDynamixelPositions.srv
@@ -41,7 +40,7 @@ catkin_package(
 #  DEPENDS system_lib
 )
 
-include_directories( include ${catkin_INCLUDE_DIRS} )
+include_directories( include ${catkin_INCLUDE_DIRS} ${DXL_INCLUDE_DIRS})
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
@@ -55,7 +54,6 @@ add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catk
 
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
-  "${DXL}"
+  ${DXL_LIBRARIES}
 )
 
-target_include_directories(${PROJECT_NAME}_node INTERFACE "${DXL_HEADER}")
