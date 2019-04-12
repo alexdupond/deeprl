@@ -1,9 +1,18 @@
-import os
 import numpy as np
+import gym
 from gym import utils, spaces
-from gym.envs.mujoco import mujoco_env
 from math import sin, cos, radians, pi
-from mujoco_py.generated import const
+
+import rospy
+from std_msgs.msg import Float32MultiArray
+
+
+# register(
+#     id='ROSDynReacherVelChange-v0',
+#     entry_point='gym_dyn_reacher.envs:ROSDynReacherVelChangeEnv',
+#     max_episode_steps=500,
+# )
+
 
 _lim_safety = radians(10)
 
@@ -13,7 +22,6 @@ motor_lim_angle_hi = np.array([1.8, 2.]) - _lim_safety
 
 def _rand_joint_angles():
     return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
-
 
 def _forward(j):
     """forward kinematics"""
@@ -37,17 +45,44 @@ def _forward(j):
     return y, z
 
 
-class DynReacherVelChangeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+class ROSDynReacherVelChangeEnv(gym.Env):
     def __init__(self):
-        utils.EzPickle.__init__(self)
-        model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher.xml")
+
+        ##Ros stuff
+        rospy.init_node("RosDynGym")
+
+        #Subscribe
+        self.Ros_pos = rospy.Subscriber("dynamixel_present_position", Float32MultiArray, self.get_pos())
+        self.Ros_vel = rospy.Subscriber("dynamixel_present_velocity", Float32MultiArray, self.get_vel())
+        self.Ros_trq = rospy.Subscriber("dynamixel_present_torque", Float32MultiArray, self.get_trq())
+
+        #service
+        rospy.wait_for_service('dynamixel_set_positions_service')
+
+        ## Gym stuff
         self.target_pos = np.array([0, 0])
-        mujoco_env.MujocoEnv.__init__(self, model_path, 2)
-        aspace = self.action_space
         self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=aspace.dtype)
-        self.reset_model()
+        self.observation_space = None
+
+    #### Ros Callback
+    def get_pos(self,data):
+        print('pos: ', data)
+        return data
+
+    def get_vel(self,data):
+        print('vel: ', data)
+        return data
+
+    def get_trq(self,data):
+        print('trq: ', data)
+        return data
+
+
+    ## Env-gym functions
 
     def step(self, a):
+
+
         ctrl = np.concatenate((a[:2], self.target_pos))
         reward = self._get_reward()
         self.do_simulation(ctrl, self.frame_skip)
@@ -55,18 +90,9 @@ class DynReacherVelChangeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         done = False
         return ob, reward, done, {}
 
-    def viewer_setup(self):
-        self.viewer.cam.trackbodyid = 0
-        self.viewer.cam.elevation = -10
-        self.viewer.cam.azimuth = 180
-        self.viewer.cam.lookat[:3] = [0, 0, 0.07]
 
     def reset_model(self):
-        start_joint_angles = _rand_joint_angles()
-        self.target_pos = _forward(_rand_joint_angles())
-        qpos = np.concatenate((start_joint_angles, self.target_pos))
-        qvel = np.concatenate((np.random.uniform(-1, 1, 2), [0, 0]))
-        self.set_state(qpos, qvel)
+
         return self._get_obs()
 
     def _get_reward(self):
