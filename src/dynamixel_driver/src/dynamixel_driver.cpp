@@ -210,8 +210,6 @@ int main(int argc, char **argv)
 
   setTorque(packetHandler, portHandler, TORQUE_ENABLE);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
   while (ros::ok())
   {
        try
@@ -354,6 +352,8 @@ void setTorque(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, uint8
     paH->write1ByteTxOnly(poH, DXL1_ID, ADDR_PRO_TORQUE_ENABLE, data);
     // Enable Dynamixel#2 Torque
     paH->write1ByteTxOnly(poH, DXL2_ID, ADDR_PRO_TORQUE_ENABLE, data);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void setControlMode(int control_mode)
@@ -362,7 +362,6 @@ void setControlMode(int control_mode)
   try
   {
     setTorque(packetHandler, portHandler, TORQUE_DISABLE);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     // Enable Position Controlmode #1
     packetHandler->write1ByteTxRx(portHandler, DXL1_ID, ADDR_PRO_OPERATING_MODE, control_mode, &dxl_error);
     if (dxl_error != COMM_SUCCESS)
@@ -380,7 +379,6 @@ void setControlMode(int control_mode)
   controlMode = control_mode;
 
   setTorque(packetHandler, portHandler, TORQUE_ENABLE);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynamixel::GroupSyncRead &gsrPos, dynamixel::GroupSyncRead &gsrVel, dynamixel::GroupSyncRead & gsrCur)
