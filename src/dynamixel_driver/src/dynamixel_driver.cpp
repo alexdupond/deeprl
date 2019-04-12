@@ -134,8 +134,8 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
   setControlMode(POS_CONTROL_MODE);
 
   // Use input data req.inputPos[i] to get motor positions sendt
-  int32_t dxl1_target_pos = fromRadToPos(req.inputPos[0]) + DXL1_OFFSET;
-  int32_t dxl2_target_pos = fromRadToPos(req.inputPos[1]) + DXL2_OFFSET;
+  int32_t dxl1_target_pos = (fromRadToPos(req.inputPos[0]) + DXL1_OFFSET) % 4096;
+  int32_t dxl2_target_pos = (fromRadToPos(req.inputPos[1]) + DXL2_OFFSET) % 4096;
 
   syncWrite(groupSyncWrite_Pos, DXL1_ID, dxl1_target_pos);
   syncWrite(groupSyncWrite_Pos, DXL2_ID, dxl2_target_pos);
@@ -148,6 +148,12 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
 
   do
   {
+    if (!withinSafeZone(dxl1_target_pos - DXL1_OFFSET, dxl2_target_pos - DXL2_OFFSET))
+      {
+          std::cerr << "Target Pos out of range" << std::endl;
+          break;
+      }
+
     try
     {    // Syncread present position
         dxl_comm_result = groupSyncRead_Pos.txRxPacket();
