@@ -4,12 +4,6 @@ from gym import envs
 import gym_dyn_reacher
 import gym_ros_reacher
 
-register(
-    id='ROSDynReacherVelChange-v0',
-    entry_point='gym_ros_reacher.envs:ROSDynReacherVelChangeEnv',
-    max_episode_steps=500,
-)
-
 Dyn = False
 ROS = False
 for envs in envs.registry.all():

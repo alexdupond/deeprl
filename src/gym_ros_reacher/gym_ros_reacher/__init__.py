@@ -1,7 +1,7 @@
-#import logging
+import logging
 from gym.envs.registration import register
 
-#logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 register(
     id='ROSDynReacherVelChange-v0',
