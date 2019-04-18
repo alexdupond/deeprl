@@ -24,4 +24,6 @@ else:
     print('\n :( NOPE!! ROSDynReacherVelChange-v0\n')
 
 print("Make env test:\n")
-gym.make('DynReacherVelChange-v0')
+env = gym.make('DynReacherVelChange-v0')
+observation = env.reset()
+print('Did a observation: \n',observation)

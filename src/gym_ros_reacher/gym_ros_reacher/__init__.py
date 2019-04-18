@@ -5,6 +5,6 @@ logger = logging.getLogger(__name__)
 
 register(
     id='ROSDynReacherVelChange-v0',
-    entry_point='gym_ros_reacher.envs:ROSDynReacherVelChangeEnv',
+    entry_point='gym_ros_reacher.envs:ROSDynEnv',
     max_episode_steps=500,
 )
