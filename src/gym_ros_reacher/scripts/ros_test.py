@@ -4,11 +4,10 @@ from math import sin, cos, radians, pi
 import time
 import rospy
 from std_msgs.msg import Float32MultiArray
+from dynamixel_driver.srv import SetDynamixelPositions as DynamixelPositions
 
-from gym_ros_reacher.srv import SetDynamixelPositions as DynamixelPositions
 
-
-_lim_safety = radians(10)
+_lim_safety = radians(30)
 
 motor_lim_angle_lo = np.array([-1., -2.]) + _lim_safety
 motor_lim_angle_hi = np.array([1.8, 2.]) - _lim_safety
@@ -37,7 +36,6 @@ def _forward(j):
     z += cos(j0 + j1_offset + j1) * mjoint_to_tip_l
     return y, z
 
-
 class ROSDynReacherVelChangeEnv():
     def __init__(self):
 
@@ -54,16 +52,13 @@ class ROSDynReacherVelChangeEnv():
 
     #### Ros Callback
     def get_pos(self,data):
-        print('pos: ', data)
-        return data
+        print('pos: ', data.data)
 
     def get_vel(self,data):
-        print('vel: ', data)
-        return data
+        print('vel: ', data.data)
 
     def get_trq(self,data):
-        print('trq: ', data)
-        return data
+        print('trq: ', data.data)
 
 
 print("Launching ros_test.py")
@@ -71,13 +66,20 @@ run = ROSDynReacherVelChangeEnv()
 
 time.sleep(1.0)
 moveRobot = rospy.ServiceProxy('dynamixel_set_positions_service', DynamixelPositions)
+
 moveto1 = [1,1]
 moveto2 = [0,0]
-moveRobot(moveto1)
+moveR = _rand_joint_angles()
+moveRobot( moveR)
+
+print("\n Random movement was: ",moveR,"\n")
+
 time.sleep(1)
 moveRobot(moveto2)
+time.sleep(1)
 
-try:
-    rospy.spin()
-except KeyboardInterrupt:
-    print("Shutting down")
+print("Shutting down")
+# try:
+#     rospy.spin()
+# except KeyboardInterrupt:
+#     print("Shutting down")
