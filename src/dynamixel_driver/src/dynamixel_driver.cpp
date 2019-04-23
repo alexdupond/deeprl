@@ -161,10 +161,10 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
         dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
         dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
 
-        if (!withinSafeZone(dxl1_present_position - DXL1_OFFSET, dxl2_present_position - DXL2_OFFSET))
+        /*if (!withinSafeZone(dxl1_present_position - DXL1_OFFSET, dxl2_present_position - DXL2_OFFSET))
         {
           emergencyStop();
-        }
+        }*/
     }
     catch (const char* error_msg)
     {
