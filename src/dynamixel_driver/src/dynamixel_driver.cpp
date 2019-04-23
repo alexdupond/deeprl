@@ -281,12 +281,12 @@ int main(int argc, char **argv)
 
 int32_t fromRadToPos(float dataInRad)
 {
-  return (dataInRad * 4096.)/(2. * 2.1415);
+  return (dataInRad * 4096.)/(2. * 3.1415);
 }
 
 float fromPosToRad(int32_t dataPos)
 {
-  return (dataPos / 4096.) * 2. * 3.1415;
+  return (dataPos * 2. * 3.1415) / 4096.;
 }
 
 float fromCurToTorq(int16_t dataInCur)
