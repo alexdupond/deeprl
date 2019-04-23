@@ -148,23 +148,20 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
 
   do
   {
-    if (!withinSafeZone(dxl1_target_pos - DXL1_OFFSET, dxl2_target_pos - DXL2_OFFSET))
-      {
-          std::cerr << "Target Pos out of range" << std::endl;
-          break;
-      }
-
     try
-    {    // Syncread present position
+    {
+        if (!withinSafeZone(dxl1_target_pos - DXL1_OFFSET, dxl2_target_pos - DXL2_OFFSET))
+        {
+          std::cerr << "Target Pos out of range" << std::endl;
+          emergencyStop();
+        }
+
+        // Syncread present position
         dxl_comm_result = groupSyncRead_Pos.txRxPacket();
         if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
         dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
         dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
 
-        /*if (!withinSafeZone(dxl1_present_position - DXL1_OFFSET, dxl2_present_position - DXL2_OFFSET))
-        {
-          emergencyStop();
-        }*/
     }
     catch (const char* error_msg)
     {
