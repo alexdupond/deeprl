@@ -9,8 +9,8 @@ from dynamixel_driver.srv import SetDynamixelPositions as DynamixelPositions
 
 _lim_safety = radians(30)
 
-motor_lim_angle_lo = np.array([-1., -2.]) + _lim_safety
-motor_lim_angle_hi = np.array([1.8, 2.]) - _lim_safety
+motor_lim_angle_lo = np.array([-1., -1.8]) #+ _lim_safety
+motor_lim_angle_hi = np.array([1.8, 1.8]) #- _lim_safety
 
 def _rand_joint_angles():
     return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
