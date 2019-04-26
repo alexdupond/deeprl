@@ -55,7 +55,7 @@
 #define VEL_CONTROL_MODE                1
 #define CUR_CONTROL_MODE                0
 
-#define DXL1_OFFSET                     1375 // 309
+#define DXL1_OFFSET                     2365 // 309
 #define DXL2_OFFSET                     1855
 
 #define DXL1_HOMING_OFFSET              1024
@@ -140,8 +140,8 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
   setControlMode(POS_CONTROL_MODE);
 
   // Use input data req.inputPos[i] to get motor positions sendt
-  int32_t dxl1_target_pos = (fromRadToPos(req.inputPos[0]) + DXL1_OFFSET) % 4096;
-  int32_t dxl2_target_pos = (fromRadToPos(req.inputPos[1]) + DXL2_OFFSET) % 4096;
+  int32_t dxl1_target_pos = (fromRadToPos(req.inputPos[0]) + DXL1_OFFSET);
+  int32_t dxl2_target_pos = (fromRadToPos(req.inputPos[1]) + DXL2_OFFSET);
 
   syncWrite(groupSyncWrite_Pos, DXL1_ID, dxl1_target_pos);
   syncWrite(groupSyncWrite_Pos, DXL2_ID, dxl2_target_pos);
@@ -159,14 +159,14 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
         if (!withinSafeZone(dxl1_target_pos - DXL1_OFFSET, dxl2_target_pos - DXL2_OFFSET))
         {
           std::cerr << "Target Pos out of range" << std::endl;
-          emergencyStop();
+          break;
         }
 
         // Syncread present position
         dxl_comm_result = groupSyncRead_Pos.txRxPacket();
         if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
-        dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
-        dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
+        dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
+        dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION);
 
     }
     catch (const char* error_msg)
@@ -225,8 +225,8 @@ int main(int argc, char **argv)
        {    // Syncread present position
            dxl_comm_result = groupSyncRead_Pos.txRxPacket();
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
-           dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096 - DXL1_OFFSET;
-           dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096 - DXL2_OFFSET;
+           dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) - DXL1_OFFSET;
+           dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) - DXL2_OFFSET;
            // Syncread present velocity
            dxl_comm_result = groupSyncRead_Vel.txRxPacket();
            if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
@@ -256,7 +256,6 @@ int main(int argc, char **argv)
     }
   }
 
-  // Maybe publish current motor position every 10 Hz
   // Create msg
   std_msgs::Float32MultiArray msg_pos;
   std_msgs::Float32MultiArray msg_vel;
@@ -264,8 +263,6 @@ int main(int argc, char **argv)
   // push in the data
   msg_pos.data.push_back(fromPosToRad(dxl1_present_position));
   msg_pos.data.push_back(fromPosToRad(dxl2_present_position));
-  //msg_pos.data.push_back(dxl1_present_position);
-  //msg_pos.data.push_back(dxl2_present_position);
   msg_vel.data.push_back(fromTickToRad(dxl1_present_vel));
   msg_vel.data.push_back(fromTickToRad(dxl2_present_vel));
   msg_torq.data.push_back(fromCurToTorq(dxl1_present_current));
@@ -448,7 +445,7 @@ void initRobot(dynamixel::PacketHandler *paH, dynamixel::PortHandler *poH, dynam
 
     controlMode = VEL_CONTROL_MODE;
 
-    paH->write4ByteTxRx(poH, DXL1_ID, ADDR_PRO_HOMING_OFFSET, DXL1_HOMING_OFFSET, &dxl_error);
+    paH->write4ByteTxRx(poH, DXL1_ID, ADDR_PRO_HOMING_OFFSET, 0, &dxl_error);
     if (dxl_error != COMM_SUCCESS)
         throw paH->getRxPacketError(dxl_error);
 
