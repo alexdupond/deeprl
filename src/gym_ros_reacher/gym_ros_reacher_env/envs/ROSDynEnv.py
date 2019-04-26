@@ -8,9 +8,10 @@ from std_msgs.msg import Float32MultiArray
 from dynamixel_driver.srv import SetDynamixelPositions as DynamixelPositions
 
 ##### Dynamixel safety setup
-_lim_safety = radians(30)
-motor_lim_angle_lo = np.array([-1., -2.]) + _lim_safety
-motor_lim_angle_hi = np.array([1.8, 2.]) - _lim_safety
+#_lim_safety = radians(30)
+motor_lim_angle_lo = np.array([0.0, 0.0]) #np.array([-1., -1.8]) #+ _lim_safety
+motor_lim_angle_hi = np.array([1.8, 1.8]) #- _lim_safety
+
 def _rand_joint_angles():
     return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
 def _forward(j):
@@ -83,11 +84,12 @@ class ROSDynEnv(gym.Env):
         reward = self.get_reward()
         self.moveRobot(action)
         done = False
-        print("
-              "
-
-        )
-
+        print("################################")
+        print("# Action  : ", action)
+        print("# Position: ", self.pos)
+        print("# Target  : ", self.target)
+        print("# Reward  : ", reward)
+        print("################################\n")
         return obs, reward, done, {}
 
     def reset(self):
@@ -95,6 +97,10 @@ class ROSDynEnv(gym.Env):
         self.target = _forward(_rand_joint_angles())
         random_move = _rand_joint_angles()
         self.moveRobot(random_move)
+        print("################################")
+        print("# RESET ROBOT ")
+        print("# Reset to: ", random_move )
+        print("################################\n")
         # return self.get_obs()
 
     def get_reward(self):
