@@ -1,1 +1,2 @@
 from gym_dyn_reacher.envs.DynReacherVelChangeEnv import DynReacherVelChangeEnv
+from gym_dyn_reacher.envs.DynReacherForceEnv import DynReacherForceEnv
