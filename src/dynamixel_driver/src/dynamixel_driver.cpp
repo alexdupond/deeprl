@@ -99,7 +99,10 @@ int16_t fromTorqToCur(float dataInTorq);
 void setDynamixelCallbackVelocity(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
   if (controlMode != VEL_CONTROL_MODE)
+  {
     setControlMode(VEL_CONTROL_MODE);
+    controlMode = VEL_CONTROL_MODE;
+  }
 
   syncWrite(groupSyncWrite_Vel, DXL1_ID, fromRadToTick(msg->data[0]));
   syncWrite(groupSyncWrite_Vel, DXL2_ID, fromRadToTick(msg->data[1]));
@@ -115,7 +118,10 @@ void setDynamixelCallbackVelocity(const std_msgs::Float32MultiArray::ConstPtr& m
 void setDynamixelCallbackTorque(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
   if (controlMode != CUR_CONTROL_MODE)
+  {
     setControlMode(CUR_CONTROL_MODE);
+    controlMode = CUR_CONTROL_MODE;
+  }
 
   syncWrite(groupSyncWrite_Torq, DXL1_ID, fromTorqToCur(msg->data[0]));
   syncWrite(groupSyncWrite_Torq, DXL2_ID, fromTorqToCur(msg->data[1]));
@@ -379,7 +385,6 @@ void setControlMode(int control_mode)
   {
     std::cerr << error_msg << std::endl;
   }
-  controlMode = control_mode;
 
   setTorque(packetHandler, portHandler, TORQUE_ENABLE);
 }
