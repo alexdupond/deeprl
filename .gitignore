@@ -7,3 +7,5 @@
 **/*.pyc
 **/*~
 **/*.egg-info/
+.DS_STORE
+src/gym_dyn_reacher/models
