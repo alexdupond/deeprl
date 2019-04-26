@@ -99,7 +99,10 @@ int16_t fromTorqToCur(float dataInTorq);
 void setDynamixelCallbackVelocity(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
   if (controlMode != VEL_CONTROL_MODE)
+  {
     setControlMode(VEL_CONTROL_MODE);
+    controlMode = VEL_CONTROL_MODE;
+  }
 
   syncWrite(groupSyncWrite_Vel, DXL1_ID, fromRadToTick(msg->data[0]));
   syncWrite(groupSyncWrite_Vel, DXL2_ID, fromRadToTick(msg->data[1]));
@@ -115,7 +118,10 @@ void setDynamixelCallbackVelocity(const std_msgs::Float32MultiArray::ConstPtr& m
 void setDynamixelCallbackTorque(const std_msgs::Float32MultiArray::ConstPtr& msg)
 {
   if (controlMode != CUR_CONTROL_MODE)
+  {
     setControlMode(CUR_CONTROL_MODE);
+    controlMode = CUR_CONTROL_MODE;
+  }
 
   syncWrite(groupSyncWrite_Torq, DXL1_ID, fromTorqToCur(msg->data[0]));
   syncWrite(groupSyncWrite_Torq, DXL2_ID, fromTorqToCur(msg->data[1]));
@@ -148,23 +154,20 @@ bool setDynamixelService(dynamixel_driver::SetDynamixelPositions::Request  &req,
 
   do
   {
-    if (!withinSafeZone(dxl1_target_pos - DXL1_OFFSET, dxl2_target_pos - DXL2_OFFSET))
-      {
-          std::cerr << "Target Pos out of range" << std::endl;
-          break;
-      }
-
     try
-    {    // Syncread present position
+    {
+        if (!withinSafeZone(dxl1_target_pos - DXL1_OFFSET, dxl2_target_pos - DXL2_OFFSET))
+        {
+          std::cerr << "Target Pos out of range" << std::endl;
+          emergencyStop();
+        }
+
+        // Syncread present position
         dxl_comm_result = groupSyncRead_Pos.txRxPacket();
         if (dxl_comm_result != COMM_SUCCESS) printf(packetHandler->getTxRxResult(dxl_comm_result));
         dxl1_present_position = syncRead(groupSyncRead_Pos, DXL1_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
         dxl2_present_position = syncRead(groupSyncRead_Pos, DXL2_ID, ADDR_PRO_PRESENT_POSITION, LEN_PRO_PRESENT_POSITION) % 4096;
 
-        if (!withinSafeZone(dxl1_present_position - DXL1_OFFSET, dxl2_present_position - DXL2_OFFSET))
-        {
-          emergencyStop();
-        }
     }
     catch (const char* error_msg)
     {
@@ -284,12 +287,12 @@ int main(int argc, char **argv)
 
 int32_t fromRadToPos(float dataInRad)
 {
-  return (dataInRad * 4096.)/(2. * 2.1415);
+  return (dataInRad * 4096.)/(2. * 3.1415);
 }
 
 float fromPosToRad(int32_t dataPos)
 {
-  return (dataPos / 4096.) * 2. * 3.1415;
+  return (dataPos * 2. * 3.1415) / 4096.;
 }
 
 float fromCurToTorq(int16_t dataInCur)
@@ -382,7 +385,6 @@ void setControlMode(int control_mode)
   {
     std::cerr << error_msg << std::endl;
   }
-  controlMode = control_mode;
 
   setTorque(packetHandler, portHandler, TORQUE_ENABLE);
 }
