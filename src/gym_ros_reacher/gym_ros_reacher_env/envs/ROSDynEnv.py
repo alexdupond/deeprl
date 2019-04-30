@@ -8,9 +8,10 @@ from std_msgs.msg import Float32MultiArray
 from dynamixel_driver.srv import SetDynamixelPositions as DynamixelPositions
 
 ##### Dynamixel safety setup
+#  sudo chmod a+rw /dev/t
 #_lim_safety = radians(30)
-motor_lim_angle_lo = np.array([0.0, 0.0]) #np.array([-1., -1.8]) #+ _lim_safety
-motor_lim_angle_hi = np.array([1.8, 1.8]) #- _lim_safety
+motor_lim_angle_lo = np.array([-1.1, -1.8], dtype=np.float32) #+ _lim_safety
+motor_lim_angle_hi = np.array([1.75, 1.8], dtype=np.float32) #- _lim_safety
 
 def _rand_joint_angles():
     return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
@@ -59,12 +60,16 @@ class ROSDynEnv(gym.Env):
         time.sleep(1)
 
         # Gym stuff
-        # utils.EzPickle.__init__(self)
-        self.action_space = spaces.Box(low=motor_lim_angle_lo , high=motor_lim_angle_hi, dtype=motor_lim_angle_hi.dtype)
+        self.action_space = spaces.Box(low=motor_lim_angle_lo, high=motor_lim_angle_hi, dtype=np.float32)
         _obs = self.get_obs()
         high = np.inf*np.ones(_obs.size)
         low = -high
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
+
+        # Print cycle
+        self.loopCount = 0.
+        self.loopLimit = 25.
+        self.avgReward = 0.
 
     def get_pos(self,data):
         self.pos = np.array(data.data, dtype=np.double)
@@ -82,14 +87,23 @@ class ROSDynEnv(gym.Env):
     def step(self, action):
         obs = self.get_obs()
         reward = self.get_reward()
+        #action = np.clip(action,motor_lim_angle_lo,motor_lim_angle_hi) # Clip to action space
         self.moveRobot(action)
         done = False
-        print("################################")
-        print("# Action  : ", action)
-        print("# Position: ", self.pos)
-        print("# Target  : ", self.target)
-        print("# Reward  : ", reward)
-        print("################################\n")
+
+        # print cycle
+        self.avgReward += reward
+        if self.loopCount > self.loopLimit:
+            print("##############  10 full steps  ##################")
+            print("# Action  : ", action)
+            print("# Position: ", self.pos)
+            print("# Target  : ", self.target)
+            print("# Reward  : ", self.avgReward/self.loopCount)
+            print("################################################\n")
+            self.loopCount = 0
+            self.avgReward = 0
+        self.loopCount += 1
+
         return obs, reward, done, {}
 
     def reset(self):
