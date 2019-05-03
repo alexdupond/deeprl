@@ -5,12 +5,17 @@ from gym.envs.mujoco import mujoco_env
 from math import sin, cos, radians, pi
 
 _lim_safety = radians(10)
+_s = radians(40)
 
-motor_lim_angle_lo = np.array([-1.1 , -1.8]) + _lim_safety
-motor_lim_angle_hi = np.array([1.75, 1.8]) - _lim_safety
+motor_lim_angle_lo = np.array([-1.1, -1.8]) + _s
+motor_lim_angle_hi = np.array([1.75, 1.8]) - _s
+
+safety_motor_lim_angle_lo = motor_lim_angle_lo + _lim_safety
+safety_motor_lim_angle_hi = motor_lim_angle_hi - _lim_safety
+
 
 def _rand_joint_angles():
-    return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
+    return np.random.uniform(safety_motor_lim_angle_lo, safety_motor_lim_angle_hi)
 
 
 def _forward(j):
@@ -42,16 +47,21 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.target_pos = np.array([0, 0])
         mujoco_env.MujocoEnv.__init__(self, model_path, 2)
         aspace = self.action_space
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=aspace.dtype)
+        self.action_space = spaces.Box(low=-.1, high=.1, shape=(2,), dtype=aspace.dtype)
         self.reset_model()
 
     def step(self, a):
         ctrl = np.concatenate((a[:2], self.target_pos))
+
+        #print("action:", a[:2])
+
         old_potential = self._calc_potential()
         self.do_simulation(ctrl, self.frame_skip)
         reward = self._get_reward(a[:2], old_potential)
         ob = self._get_obs()
-        done = False
+
+        theta = self.sim.data.qpos.flat[:2]
+        done = np.any(theta < motor_lim_angle_lo) or np.any(theta > motor_lim_angle_hi)
         return ob, reward, done, {}
 
     def viewer_setup(self):
@@ -65,6 +75,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.target_pos = _forward(_rand_joint_angles())
         qpos = np.concatenate((start_joint_angles, self.target_pos))
         qvel = np.concatenate((np.random.uniform(-1, 1, 2), [0, 0]))
+        qvel = np.zeros(4)
         self.set_state(qpos, qvel)
         return self._get_obs()
 
@@ -79,7 +90,8 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 - 0.10 * np.sum(np.abs(force * omega))  # work torque*angular_velocity
                 - 0.01 * np.sum(np.abs(force))  # stall torque require some energy
         )
-        stuck_joint_cost = -0.1 * np.sum(np.less(theta, motor_lim_angle_lo) + np.greater(theta, motor_lim_angle_hi))
+        stuck_joint_cost = -0.1 * np.sum(
+            np.less(theta, safety_motor_lim_angle_lo) + np.greater(theta, safety_motor_lim_angle_hi))
         new_potential = self._calc_potential()
         return new_potential - old_potential + electricity_cost + stuck_joint_cost
 
