@@ -6,9 +6,6 @@
 		<default class="dyn_motor">
 			<geom rgba="0.1 0.1 0.1 .3" size=".019 .0143 .0233"
 				  type="box" conaffinity="0" mass="0.136"/>
-			<velocity ctrllimited="true" ctrlrange="-2.0 2.0"
-					  forcelimited="true" forcerange="-2.0 2.0"
-					  kv="2"/>
 		</default>
 	</default>
 	<option gravity="0 0 -9.81" integrator="RK4" timestep="0.01"/>
@@ -37,8 +34,8 @@
 		</body>
 	</worldbody>
 	<actuator>
-		<velocity joint="joint0" class="dyn_motor"/>
-		<velocity joint="joint1" class="dyn_motor"/>
+		<motor joint="joint0" ctrllimited="true" ctrlrange="-0.1 0.1" gear="1.0" />
+		<motor joint="joint1" ctrllimited="true" ctrlrange="-0.1 0.1" gear="1.0" />
 		<position joint="target_y" kp="2" />
 		<position joint="target_z" kp="2" />
 	</actuator>
