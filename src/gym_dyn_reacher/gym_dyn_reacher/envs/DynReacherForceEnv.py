@@ -6,8 +6,9 @@ from math import sin, cos, radians, pi
 
 _lim_safety = radians(10)
 
-motor_lim_angle_lo = np.array([-1.1 , -1.8]) + _lim_safety
+motor_lim_angle_lo = np.array([-1.1, -1.8]) + _lim_safety
 motor_lim_angle_hi = np.array([1.75, 1.8]) - _lim_safety
+
 
 def _rand_joint_angles():
     return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
@@ -79,7 +80,8 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 - 0.10 * np.sum(np.abs(force * omega))  # work torque*angular_velocity
                 - 0.01 * np.sum(np.abs(force))  # stall torque require some energy
         )
-        stuck_joint_cost = -0.1 * np.sum(np.less(theta, motor_lim_angle_lo) + np.greater(theta, motor_lim_angle_hi))
+        stuck_joint_cost = -0.1 * np.sum(
+            np.less(theta, motor_lim_angle_lo) + np.greater(theta, motor_lim_angle_hi))
         new_potential = self._calc_potential()
         return new_potential - old_potential + electricity_cost + stuck_joint_cost
 
