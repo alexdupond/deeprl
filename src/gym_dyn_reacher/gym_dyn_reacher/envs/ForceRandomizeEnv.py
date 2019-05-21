@@ -37,7 +37,7 @@ def _forward(j):
     return y, z
 
 
-class DynReacherVelChangeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+class ForceRandomizeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self):
         utils.EzPickle.__init__(self)
         model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher.xml")
