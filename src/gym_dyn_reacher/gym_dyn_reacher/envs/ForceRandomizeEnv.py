@@ -45,6 +45,25 @@ class DynReacherVelChangeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         mujoco_env.MujocoEnv.__init__(self, model_path, 2)
         aspace = self.action_space
         self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=aspace.dtype)
+
+        print("\n#####################\nModel print:")
+        a = self.model.body_inertia
+
+        print(self.model.body_inertia, "HELOO")
+        self.model.body_mass[3]=100
+
+        self.sim.set_constants()
+        self.sim.reset()
+
+        print(self.model.body_inertia)
+        # print(self.model.body_mass)
+        # print(self.model.dof_damping) #
+        # print(self.model.jnt_stiffness)
+        # print(self.model.geom_size)
+        # print(self.model.geom_friction)
+
+        print("\n#####################\n")
+
         self.reset_model()
 
 
