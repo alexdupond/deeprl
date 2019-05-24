@@ -14,3 +14,9 @@ register(
     entry_point='gym_dyn_reacher.envs:DynReacherForceEnv',
     max_episode_steps=200,
 )
+
+register(
+    id='Random-v0',
+    entry_point='gym_dyn_reacher.envs:ForceRandomizeEnv',
+    max_episode_steps=200,
+)
