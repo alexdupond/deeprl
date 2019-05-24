@@ -50,7 +50,6 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.ctrl_queue = queue.Queue()
         self.target_pos = np.array([0, 0])
         self.latest_torque = np.array([0, 0])
-        self.last_distance = 0
         self.distance_reduction_reward_weight = distance_reduction_reward_weight
         self.electricity_reward_weight = electricity_reward_weight
         self.stuck_joint_reward_weight = stuck_joint_reward_weight
@@ -70,7 +69,6 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         self.latest_torque = np.array([0, 0])
         self.ctrl_queue = queue.Queue()
-        self.last_distance = self._get_distance()
         for _ in range(self.ctrl_delay_steps):
             self.ctrl_queue.put([0, 0])
         return self._get_obs()
@@ -84,9 +82,10 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.sim.step()
 
     def step(self, a):
+        last_distance = self._get_distance()
         self.do_simulation(a[:2], self.frame_skip)
-        reward = self._get_reward(self.last_distance, self._get_distance())
-        self.last_distance = self._get_distance()
+        new_distance = self._get_distance()
+        reward = self._get_reward(last_distance, new_distance)
         obs = self._get_obs()
         theta = obs[:2]
         done = np.any(theta < joint_lim_lo) or np.any(theta > joint_lim_hi)
@@ -106,7 +105,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         theta = self.sim.data.qpos.flat[:2]
         omega = self.sim.data.qvel.flat[:2]
         electricity = (
-                + 1.0 * np.sum(np.abs(self.latest_torque * omega))  # work torque*angular_velocity
+                np.sum(np.abs(self.latest_torque * omega))  # work torque*angular_velocity
                 + 0.1 * np.sum(np.abs(self.latest_torque))  # stall torque require some energy
         )
         stuck_joints = np.sum(

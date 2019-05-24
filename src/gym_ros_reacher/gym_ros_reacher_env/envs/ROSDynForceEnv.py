@@ -20,8 +20,8 @@ _joint_penalty_lim = radians(10)
 joint_penalty_lim_lo = joint_lim_lo + _joint_penalty_lim
 joint_penalty_lim_hi = joint_lim_hi - _joint_penalty_lim
 
-trq_lim_lo = np.array([-0.1, -0.1], dtype=np.float32)
-trq_lim_hi = np.array([0.1, 0.1], dtype=np.float32)
+trq_lim_lo = np.array([-1, -1], dtype=np.float32)
+trq_lim_hi = np.array([1, 1], dtype=np.float32)
 
 
 def _rand_joint_angles():
@@ -53,9 +53,9 @@ def _forward(j):
 was_initted = False
 
 
-##### GYM STUFF
 class ROSDynForceEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, distance_reduction_reward_weight: float, electricity_reward_weight: float,
+                 stuck_joint_reward_weight: float):
         global was_initted
         assert not was_initted
         was_initted = True
@@ -67,13 +67,19 @@ class ROSDynForceEnv(gym.Env):
 
         # Observations
         self.pos = np.zeros(2)
-        self.pos_updated = 0
+        self.pos_updated = False
         self.vel = np.zeros(2)
-        self.vel_updated = 0
+        self.vel_updated = False
         self.trq = np.zeros(2)
+        self.trq_updated = False
         self.target = np.zeros(2)
         self.dist2target = 0.0
         self.last_potential = 0
+
+        # reward weights
+        self.distance_reduction_reward_weight = distance_reduction_reward_weight
+        self.electricity_reward_weight = electricity_reward_weight
+        self.stuck_joint_reward_weight = stuck_joint_reward_weight
 
         # Subscribe
         self.Ros_pos = rospy.Subscriber("dynamixel_present_position", Float32MultiArray, self.get_pos_cb)
@@ -108,12 +114,14 @@ class ROSDynForceEnv(gym.Env):
 
     def get_trq_cb(self, data):
         self.trq = np.array(data.data)
+        self.trq_updated = True
+        self.attempt_release()
 
     def attempt_release(self):
         with self.lock:
-            should_release = self.pos_updated and self.vel_updated
+            should_release = self.pos_updated and self.vel_updated and self.trq_updated
             if should_release:
-                self.pos_updated = self.vel_updated = False
+                self.pos_updated = self.vel_updated = self.trq_updated = False
         if should_release:
             self.input_received.set()
 
@@ -125,47 +133,44 @@ class ROSDynForceEnv(gym.Env):
         self.input_received.clear()
 
     def step(self, action):
+        last_distance = self._get_distance()
+        action = np.clip(action, trq_lim_lo, trq_lim_hi)  # Clip to action space
+        self.set_trq.publish(data=action)
+        self.wait_reset()
         self.wait_for_input()
-
+        reward = self.get_reward(last_distance, self._get_distance())
         obs = self.get_obs()
-        reward = self.get_reward(action, self.last_potential)
-        self.last_potential = self._calc_potential()
-
-        # reset if out of bounds
         done = np.any(obs[:2] < joint_lim_lo) or np.any(obs[:2] > joint_lim_hi)
-
-        if not done:
-            action = np.clip(action, trq_lim_lo, trq_lim_hi)  # Clip to action space
-            self.set_trq.publish(data=action)
-
         return obs, reward, done, {}
 
     def reset(self):
         start_joint_angles = _rand_joint_angles()
         self.target = _forward(_rand_joint_angles())
         self.moveRobot(start_joint_angles)
-        # return self.get_obs()
         self.wait_reset()
         self.wait_for_input()
-        self.last_potential = self._calc_potential()
         return self.get_obs()
 
-    def _calc_potential(self):
+    def _get_distance(self):
         vec = _forward(self.get_pos()) - self.target
-        return - 200 * np.linalg.norm(vec)
+        return np.linalg.norm(vec)
 
-    def get_reward(self, force, old_potential):
+    def get_reward(self, old_distance, new_distance):
         theta = self.get_pos()
         omega = self.get_vel()
-        # force = self.trq
-        electricity_cost = (
-                - 0.10 * np.sum(np.abs(force * omega))  # work torque*angular_velocity
-                - 0.01 * np.sum(np.abs(force))  # stall torque require some energy
+        torque = self.get_trq()
+        electricity = (
+                np.sum(np.abs(torque * omega))  # work torque*angular_velocity
+                + 0.1 * np.sum(np.abs(torque))  # stall torque require some energy
         )
-        stuck_joint_cost = -0.1 * np.sum(
+        stuck_joints = np.sum(
             np.less(theta, joint_penalty_lim_lo) + np.greater(theta, joint_penalty_lim_hi))
-        new_potential = self._calc_potential()
-        return new_potential - old_potential + electricity_cost + stuck_joint_cost
+        distance_reduction = - (new_distance - old_distance)
+        return (
+                + distance_reduction * self.distance_reduction_reward_weight
+                + electricity * self.electricity_reward_weight
+                + stuck_joints * self.stuck_joint_reward_weight
+        )
 
     def get_pos(self):
         with self.lock:
@@ -174,6 +179,10 @@ class ROSDynForceEnv(gym.Env):
     def get_vel(self):
         with self.lock:
             return self.vel
+
+    def get_trq(self):
+        with self.lock:
+            return self.trq
 
     def get_obs(self):
         pos = self.get_pos()

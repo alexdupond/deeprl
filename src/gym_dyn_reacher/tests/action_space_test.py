@@ -26,8 +26,11 @@ while True:
     action = env.action_space.sample()
     env.render()
     obs, reward, done, info = env.step(action)  # take a random action
-    print(reward)
+    r = 0.9 * r + 0.1 * reward
+    if i % 10 == 0:
+        print('{:.2f}'.format(r))
     i += 1
     if done or i > 300:
         env.reset()
         i = 0
+        r = 0
