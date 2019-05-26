@@ -4,6 +4,7 @@ from gym import utils, spaces
 from gym.envs.mujoco import mujoco_env
 from math import sin, cos, radians, pi
 import queue
+import time
 
 _joint_lim_safety = radians(40)
 joint_lim_lo = np.array([-1.1, -1.8]) + _joint_lim_safety
@@ -42,7 +43,7 @@ def _forward(j):
 
 class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self, frequency: int, delay: float, distance_reduction_reward_weight: float,
-                 electricity_reward_weight: float, stuck_joint_reward_weight: float):
+                 electricity_reward_weight: float, stuck_joint_reward_weight: float, exit_reward: float):
         assert frequency in (100, 50, 25, 10), 'frequency must be either  (100, 50, 25, 10)'
         frame_skip = int(round(100 / frequency))
         assert delay >= 0 and (delay * 100) % 1 < 1e-4, 'delay can only be in multiples of 0.01 s'
@@ -53,6 +54,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.distance_reduction_reward_weight = distance_reduction_reward_weight
         self.electricity_reward_weight = electricity_reward_weight
         self.stuck_joint_reward_weight = stuck_joint_reward_weight
+        self.exit_reward = exit_reward
 
         utils.EzPickle.__init__(self)
         model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher-force.xml")
@@ -89,6 +91,8 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         obs = self._get_obs()
         theta = obs[:2]
         done = np.any(theta < joint_lim_lo) or np.any(theta > joint_lim_hi)
+        if done:
+            reward += self.exit_reward
         return obs, reward, done, {}
 
     def viewer_setup(self):

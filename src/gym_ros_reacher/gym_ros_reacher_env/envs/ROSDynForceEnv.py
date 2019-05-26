@@ -55,7 +55,7 @@ was_initted = False
 
 class ROSDynForceEnv(gym.Env):
     def __init__(self, distance_reduction_reward_weight: float, electricity_reward_weight: float,
-                 stuck_joint_reward_weight: float):
+                 stuck_joint_reward_weight: float, exit_reward: float):
         global was_initted
         assert not was_initted
         was_initted = True
@@ -80,6 +80,7 @@ class ROSDynForceEnv(gym.Env):
         self.distance_reduction_reward_weight = distance_reduction_reward_weight
         self.electricity_reward_weight = electricity_reward_weight
         self.stuck_joint_reward_weight = stuck_joint_reward_weight
+        self.exit_reward = exit_reward
 
         # Subscribe
         self.Ros_pos = rospy.Subscriber("dynamixel_present_position", Float32MultiArray, self.get_pos_cb)
@@ -141,6 +142,8 @@ class ROSDynForceEnv(gym.Env):
         reward = self.get_reward(last_distance, self._get_distance())
         obs = self.get_obs()
         done = np.any(obs[:2] < joint_lim_lo) or np.any(obs[:2] > joint_lim_hi)
+        if done:
+            reward += self.exit_reward
         return obs, reward, done, {}
 
     def reset(self):
