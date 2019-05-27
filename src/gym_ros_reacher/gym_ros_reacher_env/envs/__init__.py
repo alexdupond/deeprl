@@ -1,1 +1,2 @@
 from gym_ros_reacher_env.envs.ROSDynEnv import ROSDynEnv
+from gym_ros_reacher_env.envs.ROSDynForceEnv import ROSDynForceEnv

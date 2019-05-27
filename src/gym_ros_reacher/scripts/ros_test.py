@@ -3,6 +3,7 @@ import numpy as np
 from math import sin, cos, radians, pi
 import time
 import rospy
+from std_msgs.msg import Header
 from std_msgs.msg import Float32MultiArray
 from dynamixel_driver.srv import SetDynamixelPositions as DynamixelPositions
 
@@ -47,6 +48,9 @@ class ROSDynReacherVelChangeEnv():
         self.Ros_vel = rospy.Subscriber("dynamixel_present_velocity", Float32MultiArray, self.get_vel)
         self.Ros_trq = rospy.Subscriber("dynamixel_present_torque"  , Float32MultiArray, self.get_trq)
 
+        #Publish
+
+
         #service
         rospy.wait_for_service('dynamixel_set_positions_service')
 
@@ -66,6 +70,13 @@ run = ROSDynReacherVelChangeEnv()
 
 time.sleep(1.0)
 moveRobot = rospy.ServiceProxy('dynamixel_set_positions_service', DynamixelPositions)
+
+trq = [0.1, 0.1]
+set_trq = rospy.Publisher("dynamixel_set_torque", Float32MultiArray, queue_size=10)
+time.sleep(1.0)
+print("\nTourqe: ", trq, "\n")
+set_trq.publish(data=trq)
+
 
 moveto1 = [1,1]
 moveto2 = [0,0]

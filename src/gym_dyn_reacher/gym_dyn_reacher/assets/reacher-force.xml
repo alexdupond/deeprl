@@ -6,9 +6,8 @@
 		<default class="dyn_motor">
 			<geom rgba="0.1 0.1 0.1 .3" size=".019 .0143 .0233"
 				  type="box" conaffinity="0" mass="0.136"/>
-			<velocity ctrllimited="true" ctrlrange="-2.0 2.0"
-					  forcelimited="true" forcerange="-2.0 2.0"
-					  kv="2"/>
+			<motor ctrllimited="true" ctrlrange="-1 1" />
+			<joint axis="1 0 0" type="hinge"/>
 		</default>
 	</default>
 	<option gravity="0 0 -9.81" integrator="RK4" timestep="0.01"/>
@@ -21,9 +20,9 @@
 		<geom name="motor0_geom" class="dyn_motor" pos="0 0 .0313"/>
 		<body name="angle_body" pos="0 0 0.0430">
 			<geom name="angle_geom" pos="0 0 0.036" mass="0.01" rgba="1 0 0 .3" size=".01" type="sphere"/>
-			<joint axis="1 0 0" range="-1 1.8" name="joint0" type="hinge"/>
+			<joint range="-1.2 1.85" name="joint0" class="dyn_motor"/>
 			<body name="motor2_body" pos="0 0.0164 0.0681" euler="-0.4725 0 0">
-				<joint axis="1 0 0" name="joint1" range="-2.0 2.0" type="hinge"/>
+				<joint name="joint1" range="-2 2" class="dyn_motor" />
 				<geom name="motor1_geom" class="dyn_motor" pos="0 0 0.0116"/>
 				<body name="tip" pos="0 0 .035">
 					<geom type="sphere" size=".005" rgba="1 1 1 1" mass="0"/>
@@ -37,8 +36,8 @@
 		</body>
 	</worldbody>
 	<actuator>
-		<velocity joint="joint0" class="dyn_motor"/>
-		<velocity joint="joint1" class="dyn_motor"/>
+		<motor joint="joint0" class="dyn_motor" />
+		<motor joint="joint1" class="dyn_motor" />
 		<position joint="target_y" kp="2" />
 		<position joint="target_z" kp="2" />
 	</actuator>

@@ -1,2 +1,3 @@
 from gym_dyn_reacher.envs.DynReacherVelChangeEnv import DynReacherVelChangeEnv
 from gym_dyn_reacher.envs.DynReacherForceEnv import DynReacherForceEnv
+from gym_dyn_reacher.envs.ForceRandomizeEnv import ForceRandomizeEnv
