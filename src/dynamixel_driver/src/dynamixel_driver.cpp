@@ -315,12 +315,12 @@ float fromPosToRad(int32_t dataPos) {
 
 float fromCurToTorq(int16_t dataInCur)
 {
-  return (dataInCur * 0.00269 * 1.667) + 0.12;
+  return (dataInCur * 0.00269 * 1.667) + 0.035;
 }
 
 int16_t fromTorqToCur(float dataInTorq)
 {
-  return ((dataInTorq - 0.12) / (0.00269 * 1.667));
+  return ((dataInTorq - 0.035) / (0.00269 * 1.667));
 }
 
 float fromTickToRad(int32_t dataInTick) {
