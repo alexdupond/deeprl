@@ -13,6 +13,9 @@ _joint_penalty_lim = radians(10)
 joint_penalty_lim_lo = joint_lim_lo + _joint_penalty_lim
 joint_penalty_hi = joint_lim_hi - _joint_penalty_lim
 
+trq_lim_lo = np.array([-1, -1], dtype=np.float32)
+trq_lim_hi = np.array([1, 1], dtype=np.float32)
+
 
 def _forward(j):
     """forward kinematics"""
@@ -56,7 +59,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher-force.xml")
         mujoco_env.MujocoEnv.__init__(self, model_path, frame_skip)
 
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=self.action_space.dtype)
+        self.action_space = spaces.Box(low=trq_lim_lo, high=trq_lim_hi, shape=(2,), dtype=self.action_space.dtype)
         self.reset_model()
 
     def reset_model(self, angles=None):
@@ -80,6 +83,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.sim.step()
 
     def step(self, a):
+        a = np.clip(a[:2], trq_lim_lo, trq_lim_hi)
         a = a * 0.1
         last_distance = self._get_distance()
         self.do_simulation(a[:2], self.frame_skip)

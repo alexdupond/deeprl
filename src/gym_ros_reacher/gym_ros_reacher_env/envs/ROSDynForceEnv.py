@@ -24,10 +24,6 @@ trq_lim_lo = np.array([-1, -1], dtype=np.float32)
 trq_lim_hi = np.array([1, 1], dtype=np.float32)
 
 
-def _rand_joint_angles():
-    return np.random.uniform(joint_penalty_lim_lo, joint_penalty_lim_hi)
-
-
 def _forward(j):
     """forward kinematics"""
     [j0, j1] = j
@@ -64,6 +60,7 @@ class ROSDynForceEnv(gym.Env):
         rospy.init_node("RosDynGym")
         self.lock = Lock()
         self.input_received = Event()
+        self.random = np.random.RandomState()
 
         # Observations
         self.pos = np.zeros(2)
@@ -136,6 +133,7 @@ class ROSDynForceEnv(gym.Env):
     def step(self, action):
         last_distance = self._get_distance()
         action = np.clip(action, trq_lim_lo, trq_lim_hi)  # Clip to action space
+        action = action * 0.1
         self.set_trq.publish(data=action)
         self.wait_reset()
         self.wait_for_input()
@@ -147,8 +145,8 @@ class ROSDynForceEnv(gym.Env):
         return obs, reward, done, {}
 
     def reset(self):
-        start_joint_angles = _rand_joint_angles()
-        self.target = _forward(_rand_joint_angles())
+        start_joint_angles = self._rand_joint_angles()
+        self.target = _forward(self._rand_joint_angles())
         self.moveRobot(start_joint_angles)
         self.wait_reset()
         self.wait_for_input()
@@ -198,3 +196,9 @@ class ROSDynForceEnv(gym.Env):
             (_forward(pos) - self.target)
         ])
         return obs
+
+    def _rand_joint_angles(self):
+        return self.random.uniform(joint_penalty_lim_lo, joint_penalty_lim_hi)
+
+    def seed(self, seed=None):
+        self.random.seed(seed)
