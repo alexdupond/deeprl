@@ -4,7 +4,6 @@ from gym import utils, spaces
 from gym.envs.mujoco import mujoco_env
 from math import sin, cos, radians, pi
 import queue
-import time
 
 _joint_lim_safety = radians(40)
 joint_lim_lo = np.array([-1.1, -1.8]) + _joint_lim_safety
@@ -13,10 +12,6 @@ joint_lim_hi = np.array([1.75, 1.8]) - _joint_lim_safety
 _joint_penalty_lim = radians(10)
 joint_penalty_lim_lo = joint_lim_lo + _joint_penalty_lim
 joint_penalty_hi = joint_lim_hi - _joint_penalty_lim
-
-
-def _rand_joint_angles():
-    return np.random.uniform(joint_penalty_lim_lo, joint_penalty_hi)
 
 
 def _forward(j):
@@ -55,6 +50,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.electricity_reward_weight = electricity_reward_weight
         self.stuck_joint_reward_weight = stuck_joint_reward_weight
         self.exit_reward = exit_reward
+        self.random = np.random.RandomState()
 
         utils.EzPickle.__init__(self)
         model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher-force.xml")
@@ -63,9 +59,9 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=self.action_space.dtype)
         self.reset_model()
 
-    def reset_model(self):
-        start_joint_angles = _rand_joint_angles()
-        self.target_pos = _forward(_rand_joint_angles())
+    def reset_model(self, angles=None):
+        start_joint_angles = angles if angles is not None else self._rand_joint_angles()
+        self.target_pos = _forward(self._rand_joint_angles())
         qpos = np.concatenate((start_joint_angles, self.target_pos))
         qvel = np.zeros(4)
         self.set_state(qpos, qvel)
@@ -84,6 +80,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.sim.step()
 
     def step(self, a):
+        a = a * 0.1
         last_distance = self._get_distance()
         self.do_simulation(a[:2], self.frame_skip)
         new_distance = self._get_distance()
@@ -130,3 +127,9 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             np.sin(theta),
             (self.get_body_com("tip") - self.get_body_com("target"))[1:],
         ])
+
+    def _rand_joint_angles(self):
+        return self.random.uniform(joint_penalty_lim_lo, joint_penalty_hi)
+
+    def seed(self, seed=None):
+        self.random.seed(seed)
