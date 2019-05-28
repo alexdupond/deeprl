@@ -59,7 +59,7 @@ class DynReacherForceEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher-force.xml")
         mujoco_env.MujocoEnv.__init__(self, model_path, frame_skip)
 
-        self.action_space = spaces.Box(low=trq_lim_lo, high=trq_lim_hi, shape=(2,), dtype=self.action_space.dtype)
+        self.action_space = spaces.Box(low=trq_lim_lo, high=trq_lim_hi, dtype=self.action_space.dtype)
         self.reset_model()
 
     def reset_model(self, angles=None):
