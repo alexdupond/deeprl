@@ -1,19 +1,20 @@
 import os
-import copy
 import numpy as np
 from gym import utils, spaces
 from gym.envs.mujoco import mujoco_env
 from math import sin, cos, radians, pi
-from mujoco_py.generated import const
+import queue
 
-_lim_safety = radians(10)
+_joint_lim_safety = radians(40)
+joint_lim_lo = np.array([-1.1, -1.8]) + _joint_lim_safety
+joint_lim_hi = np.array([1.75, 1.8]) - _joint_lim_safety
 
-motor_lim_angle_lo = np.array([-1., -2.]) + _lim_safety
-motor_lim_angle_hi = np.array([1.8, 2.]) - _lim_safety
+_joint_penalty_lim = radians(10)
+joint_penalty_lim_lo = joint_lim_lo + _joint_penalty_lim
+joint_penalty_hi = joint_lim_hi - _joint_penalty_lim
 
-
-def _rand_joint_angles():
-    return np.random.uniform(motor_lim_angle_lo, motor_lim_angle_hi)
+trq_lim_lo = np.array([-1, -1], dtype=np.float32)
+trq_lim_hi = np.array([1, 1], dtype=np.float32)
 
 
 def _forward(j):
@@ -39,13 +40,26 @@ def _forward(j):
 
 
 class ForceRandomizeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self):
-        utils.EzPickle.__init__(self)
-        model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher.xml")
+    def __init__(self, frequency: int, delay: float, distance_reduction_reward_weight: float,
+                 electricity_reward_weight: float, stuck_joint_reward_weight: float, exit_reward: float):
+        assert frequency in (100, 50, 25, 10), 'frequency must be either  (100, 50, 25, 10)'
+        frame_skip = int(round(100 / frequency))
+        assert delay >= 0 and (delay * 100) % 1 < 1e-4, 'delay can only be in multiples of 0.01 s'
+        self.ctrl_delay_steps = int(round(delay * 100))
+        self.ctrl_queue = queue.Queue()
         self.target_pos = np.array([0, 0])
-        mujoco_env.MujocoEnv.__init__(self, model_path, 2)
-        aspace = self.action_space
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=aspace.dtype)
+        self.latest_torque = np.array([0, 0])
+        self.distance_reduction_reward_weight = distance_reduction_reward_weight
+        self.electricity_reward_weight = electricity_reward_weight
+        self.stuck_joint_reward_weight = stuck_joint_reward_weight
+        self.exit_reward = exit_reward
+        self.random = np.random.RandomState()
+
+        utils.EzPickle.__init__(self)
+        model_path = os.path.join(os.path.dirname(__file__), "../assets", "reacher-force.xml")
+        mujoco_env.MujocoEnv.__init__(self, model_path, frame_skip)
+
+        self.action_space = spaces.Box(low=trq_lim_lo, high=trq_lim_hi, dtype=self.action_space.dtype)
 
         ## Saving init data 
         self.inertia = self.model.body_inertia.copy()
@@ -54,28 +68,13 @@ class ForceRandomizeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.armature = self.model.dof_armature.copy()
 
         ## Calculate delta 
-        self.delta_m_motor = self.mass[3] * 0.2      # delta mass motor
-        self.delta_m_elm = self.mass[2] * 0.2        # delta mass element 
-        self.delta_d_joint = self.damping[0] * 0.2   # delta damping joints 
-        self.delta_armature = self.armature[0] * 0.1 # delta armature 
+        self.delta_m_motor = self.mass[3] * 0.5      # delta mass motor
+        self.delta_m_elm = self.mass[2] * 0.5        # delta mass element 
+        self.delta_d_joint = self.damping[0] * 0.5   # delta damping joints 
+        self.delta_armature = self.armature[0] * 0.5 # delta armature 
 
         self.reset_model()
-
-
-    def step(self, a):
-        ctrl = np.concatenate((a[:2], self.target_pos))
-        reward = self._get_reward()
-        self.do_simulation(ctrl, self.frame_skip)
-        ob = self._get_obs()
-        done = False
-        return ob, reward, done, {}
-
-    def viewer_setup(self):
-        self.viewer.cam.trackbodyid = 0
-        self.viewer.cam.elevation = -10
-        self.viewer.cam.azimuth = 180
-        self.viewer.cam.lookat[:3] = [0, 0, 0.07]
-
+    
     def randomize_model(self):
 
         # Motor model parameters
@@ -93,32 +92,79 @@ class ForceRandomizeEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.set_constants()
         self.sim.reset()
 
-        print("Body mass = ", self.model.body_mass)
-        print("Damping = ", self.model.dof_damping)
-        print("Armature = ", self.model.dof_armature)
-
-    def reset_model(self):
-        start_joint_angles = _rand_joint_angles()
-        self.target_pos = _forward(_rand_joint_angles())
+    def reset_model(self, angles=None):
+        start_joint_angles = angles if angles is not None else self._rand_joint_angles()
+        self.target_pos = _forward(self._rand_joint_angles())
         qpos = np.concatenate((start_joint_angles, self.target_pos))
-        qvel = np.concatenate((np.random.uniform(-1, 1, 2), [0, 0]))
-        self.randomize_model() 
+        qvel = np.zeros(4)
+        self.randomize_model()
         self.set_state(qpos, qvel)
+        self.latest_torque = np.array([0, 0])
+        self.ctrl_queue = queue.Queue()
+        for _ in range(self.ctrl_delay_steps):
+            self.ctrl_queue.put([0, 0])
         return self._get_obs()
 
-    def _get_reward(self):
+    def do_simulation(self, ctrl, n_frames):
+        for _ in range(n_frames):
+            self.ctrl_queue.put(ctrl)
+        for _ in range(n_frames):
+            ctrl = self.ctrl_queue.get()
+            self.sim.data.ctrl[:] = np.concatenate((ctrl, self.target_pos))
+            self.sim.step()
+
+    def step(self, a):
+        a = np.clip(a[:2], trq_lim_lo, trq_lim_hi)
+        a = a * 0.1
+        last_distance = self._get_distance()
+        self.do_simulation(a[:2], self.frame_skip)
+        new_distance = self._get_distance()
+        reward = self._get_reward(last_distance, new_distance)
+        obs = self._get_obs()
+        theta = obs[:2]
+        done = np.any(theta < joint_lim_lo) or np.any(theta > joint_lim_hi)
+        if done:
+            reward += self.exit_reward
+        return obs, reward, done, {}
+
+    def viewer_setup(self):
+        self.viewer.cam.trackbodyid = 0
+        self.viewer.cam.elevation = -10
+        self.viewer.cam.azimuth = 180
+        self.viewer.cam.lookat[:3] = [0, 0, 0.07]
+
+    def _get_distance(self):
         vec = self.get_body_com("tip") - self.get_body_com("target")
-        return - np.linalg.norm(vec)
+        return np.linalg.norm(vec)
+
+    def _get_reward(self, old_distance, new_distance):
+        theta = self.sim.data.qpos.flat[:2]
+        omega = self.sim.data.qvel.flat[:2]
+        electricity = (
+                np.sum(np.abs(self.latest_torque * omega))  # work torque*angular_velocity
+                + 0.1 * np.sum(np.abs(self.latest_torque))  # stall torque require some energy
+        )
+        stuck_joints = np.sum(
+            np.less(theta, joint_penalty_lim_lo) + np.greater(theta, joint_penalty_hi))
+        distance_reduction = - (new_distance - old_distance)
+        return (
+                + distance_reduction * self.distance_reduction_reward_weight
+                + electricity * self.electricity_reward_weight
+                + stuck_joints * self.stuck_joint_reward_weight
+        )
 
     def _get_obs(self):
         theta = self.sim.data.qpos.flat[:2]
         return np.concatenate([
+            self.sim.data.qpos.flat,  # current pos, target pos
+            self.sim.data.qvel.flat[:2],  # current vel
             np.cos(theta),
             np.sin(theta),
-            self.sim.data.qpos.flat,
-            self.sim.data.qvel.flat[:2],
             (self.get_body_com("tip") - self.get_body_com("target"))[1:],
         ])
 
+    def _rand_joint_angles(self):
+        return self.random.uniform(joint_penalty_lim_lo, joint_penalty_hi)
 
-
+    def seed(self, seed=None):
+        self.random.seed(seed)
